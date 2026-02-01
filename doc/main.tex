@@ -1,0 +1,131 @@
+\documentclass[11pt, a4paper]{article}
+% 页面设置
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
+
+% 中文支持 (需要使用 XeLaTeX 编译)
+\usepackage{iftex}
+\ifXeTeX
+    \usepackage{xeCJK}
+    \setCJKmainfont{SimSun}
+    \setCJKsansfont{SimHei}
+\else
+    \PackageError{main}{This document requires XeLaTeX}{Compile with `xelatex` (not latex/pdflatex/lualatex).}
+\fi
+
+% 数学公式包
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm} % 粗体数学符号
+
+% 图片支持
+\usepackage{graphicx}
+\usepackage{float}
+
+% 标题格式
+\usepackage{titlesec}
+\titleformat{\section}{\large\bfseries\sffamily}{\thesection}{1em}{}
+\titleformat{\subsection}{\bfseries\sffamily}{\thesubsection}{1em}{}
+
+% 链接设置
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+
+\title{\textbf{耦合振子网络的控制及其在微电网技术中的应用}}
+\author{Per Sebastian Skardal \& Alex Arenas \\ 翻译版本}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section*{结果 (RESULTS)}
+
+\subsection*{Kuramoto 模型}
+我们考虑著名的 Kuramoto 模型，用于描述许多耦合耗散振子的同步过程。Kuramoto 模型由 $N$ 个相位振子 $\theta_i$ ($i = 1, \dots, N$) 组成，当这些振子被放置在一个决定其成对相互作用的网络上时，其演化过程遵循以下方程：
+\begin{equation}
+    \dot{\theta}_i = \omega_i + K \sum_{j=1}^{N} A_{ij} \sin(\theta_j - \theta_i) 
+    \label{eq:1}
+\end{equation}
+每个振子 $i$ 都有一个唯一的固有频率 $\omega_i$，描述了其在没有相互作用时的首选角速度，通常从分布 $g(\omega)$ 中随机抽取。此外，全局耦合强度 $K$ 描述了振子通过网络连接相互影响的程度，这种连接关系被编码在邻接矩阵 $[A_{ij}]$ 中。在此，我们关注无向、无权网络的简单情况（若振子 $i$ 和 $j$ 通过连边连接，则 $A_{ij}=1$，否则 $A_{ij}=0$），但我们指出，本文提出的所有结果均易于推广到有向和加权网络。我们还假设网络是连通的，即不可约的（irreducible）。在过去的几十年里，Kuramoto 模型已被证明在模拟现实世界系统方面非常有用，它揭示了涌现的集体行为背后的机制，探索了诸如时间延迟和社区结构等附加效应，并用于寻找最优网络结构。
+
+取决于耦合强度 $K$、频率向量 $\bm{\omega}$ 以及网络拓扑结构，方程 (\ref{eq:1}) 的稳态动力学可以达到多种不同的状态，包括完全非相干、部分同步和完全同步。后者的特征是 $\lim_{t\to\infty} |\dot{\theta}_j(t) - \dot{\theta}_i(t)| = 0$，也被称为全锁相（full phase locking）、频率同步或一致性（consensus）。完全同步状态（以下简称同步态）通常表现出很大程度的相位同步 $r \approx 1$，其中 $re^{i\psi} = N^{-1}\sum_{j=1}^{N}e^{i\theta_j}$ 是标准的 Kuramoto 序参量。
+
+\subsection*{稳定性与控制}
+在此，我们首先假设由于系统参数（即耦合强度、固有频率序列或网络拓扑）的原因，方程 (\ref{eq:1}) 的稳态动力学至少是部分非相干的，即一个或多个振子保持去同步。在电网的例子中，单个去同步的振子代表单次电力故障，但这可能产生进一步的破坏性影响，特别是触发级联故障并最终导致停电。因此，我们的目标是找到一个同步态并使其稳定。如果所有振子最初都是同步的，那么我们的目标就平凡地实现了；然而，我们的方法可以用来使该状态更加鲁棒和稳定。在我们寻求的同步态中，我们期望振子聚集成一个足够紧密的簇，使得 $|\theta_j - \theta_i| \ll 1$，因此，方程 (\ref{eq:1}) 可以线性化为：
+\begin{equation}
+    \dot{\theta}_i \approx \omega_i - K \sum_{j=1}^{N} L_{ij}\theta_j
+    \label{eq:2}
+\end{equation}
+其中 $L$ 是网络拉普拉斯矩阵，其元素定义为 $L_{ij} = \delta_{ij} \sum_l A_{il} - A_{ij}$，$\delta_{ij}$ 为克罗内克 $\delta$ 函数。直接的分析可以得出一个“目标”同步态（在旋转参考系 $\theta \mapsto \theta + \langle\omega\rangle t$ 内），由向量 $\bm{\theta}^* = K^{-1} L^{\dagger} \bm{\omega}$ 给出，其中 $L^{\dagger}$ 是拉普拉斯矩阵的伪逆。（我们在“材料与方法”部分总结了该结果的推导过程。）我们注意到，由于假定系统是部分非相干的，固定点 $\bm{\theta} = \bm{\theta}^*$ 要么不存在，要么不稳定。然而，我们取 $\bm{\theta} = \bm{\theta}^*$ 来代表给定参数下最接近的同步固定点，因此我们将其用作目标。我们还注意到，尽管方程 (\ref{eq:2}) 是直接从方程 (\ref{eq:1}) 线性化得到的，但其他更一般形式的系统也能产生等效的线性化形式，因此也可以使用我们在此提供的方法进行控制。我们在“材料与方法”中给出了一个具有任意耦合函数的通用系统示例。
+
+$\bm{\theta} = \bm{\theta}^*$ 的稳定性由雅可比矩阵决定，其元素定义为 $[DF]_{ij} = \partial \dot{\theta}_i / \partial \theta_j$。如果 $DF|_{\bm{\theta}^*}$ 的所有特征值均为非正，则是稳定的。在我们的案例中，我们有：
+\begin{equation}
+    DF_{ij} = 
+    \begin{cases} 
+    -K \sum_{j\neq i} A_{ij} \cos(\theta_j^* - \theta_i^*) & \text{若 } i = j \\
+    K A_{ij} \cos(\theta_j^* - \theta_i^*) & \text{其他情况}
+    \end{cases}
+    \label{eq:3}
+\end{equation}
+我们注意到 $DF$ 的每一行（和列）之和为零，即满足 $DF_{ii} = -\sum_{j\neq i} DF_{ij}$。这对于使用盖尔什戈林圆盘定理（Gershgorin circle theorem）是一个特别方便的性质，该定理意味着 $DF$ 的特征值位于闭合圆盘 $D_i$ ($i = 1, \dots, N$) 的并集内，每个圆盘以 $DF_{ii}$ 为中心，半径为 $R_i = \sum_{j\neq i} |DF_{ij}|$。（完整的定理在“材料与方法”中给出。）特别是，如果 $DF$ 的所有非对角线元素都是非负的，那么由此推知每个盖尔什戈林圆盘都包含在左半平面内，意味着所有特征值都是非正的，解是稳定的。然而，如果 $DF$ 的一个或多个非对角线元素是负的，那么对应于具有负非对角线元素行的每个盖尔什戈林圆盘就会进入右半平面，从而允许出现一个或多个正特征值，导致不稳定。因此，需要控制的振子可以很容易地被识别为那些对应行具有一个或多个负非对角线元素的振子。
+
+我们的目的是通过向系统添加一个或多个控制增益来稳定同步解。按照最近的文献，我们将施加控制的振子称为“驱动节点（driver nodes）”，未施加控制的振子称为“自由节点（free nodes）”。我们选择控制增益的形式为 $f_i(t) = F_i \sin(\phi_i - \theta_i)$，其中 $F_i$ 是第 $i$ 个控制增益的强度，$\phi_i$ 是目标相位，原则上它可以依赖于局部或全局信息，并随时间变化。在此，我们关注目标相位的选择为 $\phi_i = \theta_i^*$，并在下文讨论其他可能性。由于控制增益取决于系统的当前状态，这可以被视为一种反馈控制形式。新的动力学方程由下式给出：
+\begin{equation}
+    \dot{\theta}_i = \omega_i + K \sum_{j=1}^{N} A_{ij} \sin(\theta_j - \theta_i) + F_i \sin(\theta_i^* - \theta_i)
+    \label{eq:4}
+\end{equation}
+其中对于自由节点我们取 $F_i = 0$。虽然 $DF$ 的非对角线元素保持不变，但新的对角线元素变为 $DF_{ii} = -K\sum_{j\neq i}A_{ij} \cos(\theta_j^* - \theta_i^*) - F_i$。因此，我们设定每个驱动节点 $i$ 的耦合增益强度，使其满足 $F_i \ge K \sum_{j\neq i} A_{ij} [|\cos(\theta_j^* - \theta_i^*)| - \cos(\theta_j^* - \theta_i^*)]$。这确保了所有盖尔什戈林圆盘都包含在左半平面内，意味着（在 $\bm{\theta}^*$ 的线性近似下）所有特征值都是非正的，同步态是稳定的。（在有向网络的情况下，这意味着所有特征值具有非正实部，同步态是稳定的。）
+
+我们现在简要评论一下控制增益中目标相位 $\phi_i$ 的选择。在上述概述的方法中，我们设定目标相位等于稳态相位，即 $\phi_i = \theta_i^*$。这对于上述推导来说是一个方便的选择。此外，我们发现在实践中，其他选择也能产生积极的结果。特别是，一种往往能产生稍好结果的选择是迫使每个驱动节点朝向同步簇的中心，即 $\phi_i = \bar{\phi}$，这里我们假设簇的中心位于角度 $\bar{\phi}$ 处。目标相位也可以根据全局或分布式控制策略进行选择。特别是，给定标准 Kuramoto 序参量 $re^{i\psi} = \sum_j e^{i\theta_j}/N$ 或一组局部序参量 $r_i e^{i\psi_i} = \sum_j A_{ij} e^{i\theta_j}$，选择 $\phi_i = \psi$ 和 $\phi_i = \psi_i$ 分别对应通常能产生有利结果的全局和分布式控制策略。我们在展示示例之前还注意到，由于上述方法依赖于稳态解 $\bm{\theta}^* \approx K^{-1} L^{\dagger} \bm{\omega}$ 的近似，在实践中，我们在识别不稳定振子时会添加一个缓冲余量，即寻找非对角线元素不一定为负，而是小于某个 $\epsilon > 0$ 的情况。我们发现选择 $\epsilon = 0.2$ 是足够的，这也是我们在下面示例中使用的值。
+
+\subsection*{随机网络的控制}
+我们现在通过考虑两类随机网络来演示我们的方法：Erdős-Rényi (ER) 网络和无标度 (SF) 网络。每个 ER 网络是使用固定的连接概率 $p$ 构建的，而每个 SF 网络是使用配置模型构建的，其度序列从分布 $P(k) \propto k^{-\gamma}$ 中抽取（其中 $\gamma=3$ 且强制最小度为 $k_0$）。为了调节每个网络的平均度 $\langle k \rangle$，我们设定 $p = \langle k \rangle / (N-1)$ 或 $k_0 = \langle k \rangle (\gamma - 2) / (\gamma - 1)$。
+
+我们的结果说明了每种网络类型的示例，其中网络规模 $N=1000$，平均度 $\langle k \rangle = 6$，耦合强度设为 $K=0.4$，固有频率从均值为零、方差为一的均匀分布中抽取。无控制与有控制之间的差异非常显著，无控制时有很大一部分振子去同步，而有控制时则实现了完全同步。驱动节点分别占 ER 和 SF 网络的 37.1\% 和 44.5\% 以达到同步态。
+
+接下来，我们通过重访我们的方法来研究驱动节点和自由节点的属性。这是一个本质性的问题，因为振子在网络结构（即度分布）和局部动力学（即固有频率）方面具有异质性。如果一个振子 $i$ 的非对角线项 $DF_{ij} \propto \cos(\theta_j^* - \theta_i^*)$ 之一为负，则它是驱动节点，因此，具有较大（较小）稳态值 $\theta_i^* \approx [L^{\dagger}\bm{\omega}]_i$ 的振子倾向于是驱动（自由）节点。此外，我们发现这些值与固有频率与度的比率近似线性相关，即 $[L^{\dagger}\bm{\omega}]_i \propto \omega_i / k_i$。我们在图中说明了这一点（此处略去图表），即 $[L^{\dagger}\bm{\omega}]_i$ 对 $\omega_i/k_i$ 的关系。这些结果表明，除网络结构外，动力学在决定系统控制方面起着重要作用。特别是，系统的驱动节点倾向于平衡较大的自然频率与度之比（绝对值）。
+
+最后，我们通过研究驱动节点的比例 $n_D = N_D/N$（其中 $N_D$ 是驱动节点的总数）如何依赖于系统的动力学和结构参数来量化达成一致所需的总体努力。尽管预期 $n_D$ 会随 $K$ 单调递减，但曲线对网络拓扑和平均度的依赖是非平凡的。特别是，$n_D$ 对 $K$ 的依赖形状对平均度的敏感度高于对拓扑的敏感度，这表明与平均连通性相比，网络异质性对整体控制几乎没有影响。鉴于整体控制对耦合强度的显著依赖性，我们调查了在有限控制量可用的情况下同步网络所需的耦合强度。我们指出 ER 和 SF 网络的行为平均而言非常相似，且平均度越大，实现同步所需的耦合强度越小。
+
+\section*{讨论 (DISCUSSION)}
+
+复杂网络和复杂系统控制的理论与实践方面仍然是数学、物理、生物、化学、工程和社会科学交叉学科研究的重要且持续的领域。鉴于现实动力学过程的非线性本质以及真实网络的复杂拓扑结构给科学界带来了挑战。基于经典线性控制理论的概念，最近在理解结构可控性方面取得了重大进展，并且在非线性系统网络的控制机制开发方面也取得了显著进步。尽管如此，由于大多数需要控制技术的现实问题和应用具有问题敏感性（problem-sensitive）的本质，在设计和实施针对具有实际约束的广泛问题的高效有效控制机制方面，仍有待进一步的研究。
+
+在此，我们专注于耦合振子网络中同步（即一致性）的控制。我们的主要灵感来自于电网网络研究的进展。特别是，最近的研究表明，某些被称为微电网的电网可以被视为 Kuramoto 振子网络。在此，我们提出了一种控制方法，可以很容易地应用于 Kuramoto 网络和其他相位振子网络，从而为这些新技术的潜在直接应用提供了一个控制框架。我们的方法基于通过雅可比矩阵的谱特性来识别和稳定给定网络的同步态，并且我们在 ER 和 SF 网络上证明了其有效性。我们观察到，驱动节点，即需要控制的振子，倾向于平衡（绝对值上）大的固有频率与小的度。此外，实现同步所需的总体控制量随着耦合强度和平均度的增加而减少，而达到同步态所需的总努力敏感地依赖于网络的平均连通性和动力学参数，但令人惊讶的是，它对网络拓扑和度分布的依赖性很小。这些结果增强了我们理解、优化并最终控制电网网络同步的能力，并且更普遍地补充了关于网络耦合非线性动力系统控制的重要工作。
+
+虽然我们的核心灵感和目标应用在电网技术领域，但同步现象在自然和人造系统中发生的各种复杂过程中起着至关重要的作用，包括健康的心脏行为、细胞电路的功能、人行桥的稳定性以及通信安全。鉴于如此广泛的应用范围，我们假设我们的发现可能潜在地为其他背景下的同步控制提供一些启示，例如心脏生理学和神经科学。例如，最近有大量研究致力于心脏心律失常的治疗开发，这种治疗需要极小的冲击来消除致命的非同步行为（如心脏纤颤）并促进正常的脑振荡，同时抑制与帕金森病等异常振荡相关的疾病。
+
+\section*{材料与方法 (MATERIALS AND METHODS)}
+
+\subsection*{稳态解}
+为了推导稳态解 $\bm{\theta}^* = K^{-1} L^{\dagger} \bm{\omega}$，我们从方程 (\ref{eq:2}) 开始，它代表方程 (\ref{eq:1}) 的线性化动力学。回顾此线性化要求我们寻找所有振子紧密堆积在单个簇中的同步态，因此我们期望 $|\theta_j - \theta_i| \ll 1$。我们还注意到所有振子的平均频率由平均固有频率 $\langle \omega \rangle$ 给出。为简单起见，我们进入旋转参考系 $\theta \mapsto \theta + \langle\omega\rangle t$，有效地将平均频率设为零。然后将方程 (\ref{eq:2}) 写成向量形式是很方便的，即：
+\begin{equation}
+    \dot{\bm{\theta}} \approx \bm{\omega} - K L \bm{\theta}
+    \label{eq:5}
+\end{equation}
+其中 $L$ 是网络拉普拉斯矩阵。虽然 $L$ 有一个零特征值（记为 $\lambda_1 = 0$）使其不可逆，但它确实有一个使用其其他特征值（只要网络是连通的，这些特征值就是非零的）和相应特征向量定义的伪逆，$L^{\dagger} = \sum_{j=2}^{N} \lambda_j^{-1} \bm{v}^j \bm{v}^{jT}$。每个特征向量都被归一化，使得 $\{\bm{v}^j\}_{j=2}^N$ 构成了 $\mathbb{R}^N$ 中零均值向量空间的正交基。因此，$L$ 和 $L^{\dagger}$ 共享一个零空间，该空间由特征向量 $\bm{v}^1 \propto \bm{1}$ 跨越，并将向量映射到 $\mathbb{R}^N$ 中的零均值向量空间上。有了伪逆，我们可以最终通过设定 $\dot{\bm{\theta}} = 0$ 并求解 $\bm{\theta}$ 来获得所需的稳态解，从而得到期望的解 $\bm{\theta}^* = K^{-1} L^{\dagger} \bm{\omega}$。
+
+\subsection*{广义振子网络}
+在此，我们展示一个比方程 (\ref{eq:1}) 更一般的振子网络示例，该网络可以使用上述详述的相同方法进行控制。特别是，我们推广以考虑任意耦合函数 $H(\theta)$，得到：
+\begin{equation}
+    \dot{\theta}_i = \omega_i + K \sum_{j=1}^{N} A_{ij} H(\theta_j - \theta_i)
+    \label{eq:6}
+\end{equation}
+我们假设 $H(\theta)$ 是 $2\pi$ 周期的且至少一次连续可微。$H$ 不必满足 $H(0)=0$，因此，相邻振子之间的耦合可能是“受挫的（frustrated）”，表示即使两个振子完全相等，它们的相互作用项也不会消失。只要耦合受挫不是太大，例如 $H(0) / \sqrt{2 H'(0)} \ll 1$，就可以获得紧密聚集的同步态，并且线性化方程 (\ref{eq:6}) 产生：
+\begin{equation}
+    \dot{\theta}_i \approx \omega_i + K H(0) k_i - K H'(0) \sum_{j=1}^{N} L_{ij} \theta_j
+    \label{eq:7}
+\end{equation}
+通过定义量 $\tilde{\omega}_i = \omega_i + K H(0) k_i$ 和 $\tilde{K} = K H'(0)$，很容易看出方程 (\ref{eq:7}) 的线性化动力学与方程 (\ref{eq:2}) 具有相同的形式，因此，我们上面提出的控制方法可以很容易地应用。
+
+\subsection*{盖尔什戈林圆盘定理 (Gershgorin circle theorem)}
+\textbf{定义 (盖尔什戈林圆盘)}：设 $M$ 为一个 $N \times N$ 的复矩阵。对于 $i = 1, \dots, N$，设 $R_i = \sum_{j\neq i} |M_{ij}|$ 为第 $i$ 行非对角线元素绝对值之和，并定义 $D(M_{ii}, R_i)$ 为以 $M_{ii}$ 为中心、半径为 $R_i$ 的闭合圆盘。$D_i = D(M_{ii}, R_i)$ 即为第 $i$ 个盖尔什戈林圆盘。
+
+\textbf{定理 (盖尔什戈林)}：矩阵 $M$ 的所有特征值都位于盖尔什戈林圆盘的并集 $\bigcup_{i=1}^{N} D_i$ 之中。
+
+\end{document}
