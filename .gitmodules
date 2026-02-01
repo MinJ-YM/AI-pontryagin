@@ -1,0 +1,3 @@
+[submodule "nnc"]
+	path = nnc
+	url = https://github.com/MinJ-YM/nnc.git
