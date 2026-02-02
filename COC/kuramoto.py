@@ -135,7 +135,7 @@ def calculate_control(
 
         if is_driver:
             drivers.append(i)
-            F[i] = K * sum_term
+            F[i] = 1000 *K * sum_term
 
     return theta_star, F, drivers
 
@@ -279,8 +279,8 @@ def main() -> None:
     seed = 12345
     topology: Topology = "SF"  # "ER" 或 "SF"
     N = 30
-    k_mean = 5
-    K = 0.4
+    k_mean = 10
+    K = 0.2
     epsilon = 0.2  # 论文中建议的缓冲
     t_max = 50.0
     steps = 1200
