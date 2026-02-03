@@ -1,11 +1,3 @@
-"""Kuramoto 耦合振子网络控制示例（基于 Skardal & Arenas 方法）：
-
-1) 绘图直接画角度（相位），并包裹到 [-pi, pi]，不再画 sin(theta)。
-2) 绘图使用旋转坐标系：每个时刻减去同步相位（全局序参量的相位 psi(t)）。
-3) 统一随机种子：网络、omega、初始相位 theta0 都用同一个 RNG；无控制/有控制共用同一组初值。
-4) Matplotlib 中文字体支持，避免乱码。
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,40 +8,27 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
-
 Topology = Literal["ER", "SF"]
 
+# ==========================================
+# 1. 基础工具与网络生成
+# ==========================================
 
 def set_matplotlib_chinese() -> None:
-    """尽量在 Windows 上启用中文显示，并修复负号显示。"""
-
+    """配置 Matplotlib 中文显示。"""
     plt.rcParams["font.sans-serif"] = [
-        "SimHei",
-        "Microsoft YaHei",
-        "SimSun",
-        "Arial Unicode MS",
-        "DejaVu Sans",
+        "SimHei", "Microsoft YaHei", "PingFang SC", "Arial Unicode MS", "DejaVu Sans"
     ]
     plt.rcParams["axes.unicode_minus"] = False
 
-
 def wrap_to_pi(angle: np.ndarray) -> np.ndarray:
-    """把角度包裹到 [-pi, pi]。"""
-
+    """将角度包裹到 [-pi, pi]。"""
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
-
 def order_parameter(theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """返回 Kuramoto 序参量 r(t) 与其相位 psi(t)。
-
-    theta: shape (T, N)
-    """
-
+    """计算序参量 r(t) 和平均相位 psi(t)。"""
     z = np.mean(np.exp(1j * theta), axis=1)
-    r = np.abs(z)
-    psi = np.angle(z)
-    return r, psi
-
+    return np.abs(z), np.angle(z)
 
 def generate_network(
     N: int,
@@ -58,79 +37,70 @@ def generate_network(
     rng: np.random.Generator,
     max_tries: int = 2000,
 ) -> tuple[nx.Graph, np.ndarray, np.ndarray]:
-    """生成连通网络（ER 或 SF/BA）并初始化自然频率 omega（均值为 0）。"""
-
+    """生成连通网络并初始化自然频率（强制去均值）。"""
     print(f"正在生成 {topology} 网络 (N={N}, <k>≈{k_mean})...")
 
     if topology == "ER":
         p = k_mean / (N - 1)
         for _ in range(max_tries):
-            seed = int(rng.integers(0, 2**32 - 1))
-            G = nx.erdos_renyi_graph(N, p, seed=seed)
-            if nx.is_connected(G):
-                break
-        else:
-            raise RuntimeError("ER 网络在限定次数内未生成连通图，请增大 k_mean 或 max_tries")
+            G = nx.erdos_renyi_graph(N, p, seed=int(rng.integers(0, 1_000_000_000)))
+            if nx.is_connected(G): break
+        else: raise RuntimeError("无法生成连通 ER 图")
     elif topology == "SF":
         m = max(1, int(round(k_mean / 2)))
         for _ in range(max_tries):
-            seed = int(rng.integers(0, 2**32 - 1))
-            G = nx.barabasi_albert_graph(N, m, seed=seed)
-            if nx.is_connected(G):
-                break
-        else:
-            raise RuntimeError("SF(BA) 网络在限定次数内未生成连通图，请调整 k_mean 或 max_tries")
+            G = nx.barabasi_albert_graph(N, m, seed=int(rng.integers(0, 1_000_000_000)))
+            if nx.is_connected(G): break
+        else: raise RuntimeError("无法生成连通 SF 图")
     else:
-        raise ValueError(f"不支持的拓扑结构: {topology}")
+        raise ValueError(f"未知拓扑: {topology}")
 
-    adj = nx.to_numpy_array(G).astype(np.float64, copy=False)
-    # 论文：频率从均值为零、方差为一的均匀分布中抽取
-    # 均匀分布 U(a, b) 的方差 = (b-a)^2 / 12 = 1 => b-a = sqrt(12)
-    # 均值为 0 => a = -sqrt(3), b = sqrt(3)
-    omega = rng.uniform(-np.sqrt(3), np.sqrt(3), size=N)
-    omega = omega - float(np.mean(omega))  # 确保均值严格为 0
+    adj = nx.to_numpy_array(G).astype(np.float64)
+    
+    # 生成频率并去均值
+    omega = rng.uniform(-1, 1, size=N) # 均匀分布
+    omega = omega - np.mean(omega)     # 关键：确保 sum(omega) = 0
+    
     return G, adj, omega
+
+# ==========================================
+# 2. 核心数学计算 (伪逆与临界耦合)
+# ==========================================
 
 def compute_critical_coupling(
     adj: np.ndarray,
     omega: np.ndarray,
-) -> tuple[float, np.ndarray, float]:
-    """计算临界耦合强度 K_critical (Dörfler & Bullo, 2011)。
-
-    K_critical = ||L^† ω||_{E,∞} = max_{(i,j)∈E} |[L^† ω]_i - [L^† ω]_j|
-
-    返回:
-        K_critical: 临界耦合强度
-        L_dagger_omega: L^† @ omega 向量
-        r_theoretical: 理论稳态序参量 (当 K >= K_critical 时)
+) -> tuple[float, np.ndarray]:
     """
+    计算临界耦合强度 Kc 和 归一化的 theta_star_base。
+    
+    K_critical = || L† ω ||_{edge, ∞}
+    即当 K = Kc 时，网络中最紧张的那条边的相位差刚好是 1 rad。
+    """
+    # 1. 确保 omega 是相对值（零均值）
+    omega_centered = omega - np.mean(omega)
+    
+    # 2. 构建拉普拉斯矩阵
     degree = np.sum(adj, axis=1)
     L = np.diag(degree) - adj
+    
+    # 3. 计算 L 的伪逆乘以 omega
+    # 数学性质：如果 sum(omega)=0，那么 sum(L_dagger_omega)=0
     L_dagger = np.linalg.pinv(L)
-    L_dagger_omega = L_dagger @ omega
-
-    # 计算边无穷范数: max over all edges
-    N = adj.shape[0]
+    L_dagger_omega = L_dagger @ omega_centered
+    
+    # 4. 遍历所有边，找到相位差最大值
+    # theta_i - theta_j = (L†ω)_i/K - (L†ω)_j/K
+    # 临界条件是 max |theta_i - theta_j| = 1
+    rows, cols = np.nonzero(np.triu(adj)) # 只取上三角，避免重复
     max_diff = 0.0
-    for i in range(N):
-        for j in range(i + 1, N):
-            if adj[i, j] > 0:  # 存在边
-                diff = abs(L_dagger_omega[i] - L_dagger_omega[j])
-                if diff > max_diff:
-                    max_diff = diff
-
-    K_critical = max_diff
-
-    # 计算理论稳态序参量: 当 K >= K_c 时，θ* = (1/K_c) L^† ω
-    # 取 K = K_c 时的 theta_star 计算 r
-    if K_critical > 0:
-        theta_star_at_Kc = L_dagger_omega / K_critical
-        z = np.mean(np.exp(1j * theta_star_at_Kc))
-        r_theoretical = float(np.abs(z))
-    else:
-        r_theoretical = 1.0
-
-    return K_critical, L_dagger_omega, r_theoretical
+    if len(rows) > 0:
+        diffs = np.abs(L_dagger_omega[rows] - L_dagger_omega[cols])
+        max_diff = np.max(diffs)
+    
+    K_critical = max_diff if max_diff > 1e-9 else 1.0
+    
+    return K_critical, L_dagger_omega
 
 def calculate_control(
     adj: np.ndarray,
@@ -138,67 +108,61 @@ def calculate_control(
     K: float,
     epsilon: float = 0.2,
 ) -> tuple[np.ndarray, np.ndarray, list[int]]:
-    """根据论文方法计算目标相位 theta* 和控制增益 F。
-
-    theta* = (1/K) L^{\\dagger} omega
-
-    稳定性判据用 Gershgorin 圆盘思想；这里用 epsilon 作缓冲：
-    视 cos(Δθ) < epsilon 为“有风险”，并按 (cos-eps) 的负部来计算所需增益。
-    当 epsilon=0 时，退化为论文推导里的 cos(Δθ) < 0 情况。
     """
-
-    if K <= 0:
-        raise ValueError("K 必须为正")
-
-    N = omega.shape[0]
+    计算控制策略。
+    
+    输入:
+        omega: 自然频率
+        K: 当前选定的耦合强度
+    输出:
+        theta_star: 理论同步态 (sum=0)
+        F: 控制增益向量
+        drivers: 驱动节点列表
+    """
+    N = len(omega)
+    
+    # 1. 再次确保去均值，保证计算出的 theta_star 重心在 0
+    omega_centered = omega - np.mean(omega)
+    
+    # 2. 计算 theta* = (1/K) * L† * ω
     degree = np.sum(adj, axis=1)
-
     L = np.diag(degree) - adj
     L_dagger = np.linalg.pinv(L)
-    theta_star = (1.0 / K) * (L_dagger @ omega)
-
-    F = np.zeros(N, dtype=float)
-    drivers: list[int] = []
-
+    
+    # 这里得到的 theta_star 必然满足 sum(theta_star) ≈ 0
+    theta_star = (1.0 / K) * (L_dagger @ omega_centered)
+    
+    # 3. 识别驱动节点 + 计算增益 (Gershgorin + ε 缓冲)
+    # 论文中为补偿 θ* 近似误差，可用阈值 ε>0：将 cos 值整体保守平移 cos_eff = cos - ε
+    # 当 cos_eff < 0 时认为该边会把 Gershgorin 圆盘推向右半平面，需要用 F_i 把圆盘拉回左半平面。
+    F = np.zeros(N)
+    drivers = []
+    
     for i in range(N):
         neighbors = np.flatnonzero(adj[i] > 0)
-        if neighbors.size == 0:
-            continue
-
-        # 论文公式: F_i >= K * sum_j A_ij * [|cos(Δθ)| - cos(Δθ)]
-        # 当 cos(Δθ) >= 0 时，贡献为 0
-        # 当 cos(Δθ) < 0 时，贡献为 -2*cos(Δθ)
-        sum_term = 0.0
+        sum_gain = 0.0
         is_driver = False
+        
         for j in neighbors:
             phase_diff = theta_star[j] - theta_star[i]
             cos_val = float(np.cos(phase_diff))
 
-            # 使用 epsilon 缓冲
-            if cos_val < epsilon:
+            # ε 缓冲：保守估计（把 cos 往负方向平移 ε）
+            cos_eff = cos_val - epsilon
+            if cos_eff < 0:
                 is_driver = True
-                # |cos| - cos 当 cos < 0 时 = -2*cos
-                # 当 0 < cos < epsilon 时，我们也加入一些控制
-                sum_term += max(0, epsilon - cos_val) * 2
-
-        if is_driver:
+                # Gershgorin 充分条件对应的增益项：|cos_eff| - cos_eff
+                sum_gain += (abs(cos_eff) - cos_eff)
+        
+        if is_driver and sum_gain > 0:
             drivers.append(i)
-            # 增大安全系数到 5.0，确保快速收敛
-            F[i] = 5.0 * K * sum_term
-
-    # 额外：对所有节点施加一个"归心"控制
-    # 低度数节点需要更强的控制（因为耦合弱）
-    for i in range(N):
-        # 基础控制力与度数成正比
-        base_control = 0.5 * K * degree[i]
-        # 低度数节点（叶子节点）需要额外的控制力
-        if degree[i] <= 2:
-            base_control = 3.0 * K  # 固定较大值
-        if F[i] < base_control:
-            F[i] = base_control
-
+            F[i] = 1.2 * K * sum_gain
+            
     return theta_star, F, drivers
 
+# ==========================================
+# 3. 动力学仿真
+# ==========================================
 
 def kuramoto_rhs(
     t: float,
@@ -207,319 +171,184 @@ def kuramoto_rhs(
     K: float,
     adj: np.ndarray,
     F: np.ndarray,
-    theta_star: np.ndarray,
+    theta_star: np.ndarray
 ) -> np.ndarray:
-    """Kuramoto 动力学（含控制项）。
-
-    dθ_i/dt = ω_i + K Σ_j A_ij sin(θ_j-θ_i) + F_i * control_term
-    
-    控制项选择：
-    - 论文使用 sin(θ_i* - θ_i)，但这是 2π 周期的
-    - 为了避免节点"绕错方向"，我们使用 wrap_to_pi(θ_i* - θ_i)
-      这样控制力总是指向最近的目标
     """
-
-    s = np.sin(theta)
-    c = np.cos(theta)
-    a_s = adj @ s
-    a_c = adj @ c
-    coupling = c * a_s - s * a_c
+    微分方程：
+    dθ_i/dt = ω_i + K Σ A_ij sin(θ_j - θ_i) + F_i sin(θ_i* - θ_i)
     
-    # 使用 wrap 后的差值，这样总是往"最近"的目标走
-    diff = theta_star - theta
-    diff_wrapped = (diff + np.pi) % (2 * np.pi) - np.pi  # wrap to [-π, π]
-    control = F * np.sin(diff_wrapped)
+    注意控制项：直接拉向静态目标 θ_i* (其重心为0)
+    """
+    # 耦合项
+    # 利用 sin(j - i) = -sin(i - j)
+    # delta_theta[i, j] = theta[i] - theta[j]
+    delta = theta[:, None] - theta[None, :]
+    coupling = np.sum(adj * np.sin(-delta), axis=1)
+    
+    # 控制项 (Paper Eq. 4)
+    # 目标是让 theta_i 靠近 theta_star_i
+    # 使用 wrap 后的相位差，避免跨越 π 时控制方向反转
+    # diff_wrapped = wrap_to_pi(theta_star - theta)
+    diff_wrapped = wrap_to_pi(0 - theta)
+    # 这里的 F 已经是按 Gershgorin 推导出的“需要多大的对角线左移”，不需要再乘 100。
+    control = 2 * F * np.sin(diff_wrapped)
     
     return omega + K * coupling + control
 
-
-@dataclass(frozen=True)
-class SimulationResult:
+@dataclass
+class SimResult:
     t: np.ndarray
-    theta: np.ndarray  # shape (T, N)
+    theta: np.ndarray
     r: np.ndarray
     psi: np.ndarray
 
-
 def run_simulation(
-    omega: np.ndarray,
-    K: float,
-    adj: np.ndarray,
-    F: np.ndarray,
-    theta_star: np.ndarray,
-    theta0: np.ndarray,
-    t_max: float = 50.0,
-    steps: int = 1000,
-    method: str = "RK45",
-) -> SimulationResult:
-    """数值积分并计算序参量。"""
-
-    t_eval = np.linspace(0.0, float(t_max), int(steps))
-
+    omega: np.ndarray, K: float, adj: np.ndarray,
+    F: np.ndarray, theta_star: np.ndarray, theta0: np.ndarray,
+    t_max: float = 50.0
+) -> SimResult:
+    
     sol = solve_ivp(
         fun=lambda t, y: kuramoto_rhs(t, y, omega, K, adj, F, theta_star),
-        t_span=(0.0, float(t_max)),
+        t_span=(0, t_max),
         y0=theta0,
-        t_eval=t_eval,
-        method=method,
-        rtol=1e-6,
-        atol=1e-8,
+        t_eval=np.linspace(0, t_max, 2000),
+        method='RK45'
     )
-    if not sol.success:
-        raise RuntimeError(f"ODE 求解失败: {sol.message}")
+    
+    theta_t = sol.y.T # (Time, N)
+    r, psi = order_parameter(theta_t)
+    
+    return SimResult(sol.t, theta_t, r, psi)
 
-    theta_tn = sol.y.T  # (T, N)
-    r, psi = order_parameter(theta_tn)
-    return SimulationResult(t=sol.t, theta=theta_tn, r=r, psi=psi)
+# ==========================================
+# 4. 绘图与主程序
+# ==========================================
 
-
-def compute_jacobian(
-    adj: np.ndarray,
-    theta_star: np.ndarray,
-    K: float,
-    F: np.ndarray | None = None,
-) -> np.ndarray:
-    """计算同步态处的 Jacobian（对 Kuramoto + 可选控制项）。"""
-
-    N = adj.shape[0]
-    df = np.zeros((N, N), dtype=float)
-
-    for i in range(N):
-        for j in range(N):
-            if i == j:
-                continue
-            if adj[i, j] == 0:
-                continue
-            cos_val = float(np.cos(theta_star[j] - theta_star[i]))
-            df[i, j] = K * cos_val
-
-    for i in range(N):
-        df[i, i] = -float(np.sum(df[i, :]))
-
-    if F is not None:
-        df = df.copy()
-        df[np.diag_indices(N)] -= F
-
-    return df
-
-
-def plot_results(
-    G: nx.Graph,
-    drivers: list[int],
-    unc: SimulationResult,
-    con: SimulationResult,
-    topology_name: str,
-    layout_seed: int,
-    theta_star: np.ndarray,
-    adj: np.ndarray,
-    K: float,
-    F: np.ndarray,
-    show_relative_phase: bool = True,
-) -> None:
-    """画图：网络+序参量+相位轨迹（角度）+ Jacobian。"""
-
+def main():
     set_matplotlib_chinese()
+    
+    # --- 参数 ---
+    SEED = 42
+    N = 1000
+    k_mean = 6
+    topology = "ER"
+    
+    rng = np.random.default_rng(SEED)
+    
+    # 1. 生成网络
+    G, adj, omega = generate_network(N, topology, k_mean, rng)
+    
+    # 2. 确定 K 值
+    # 先算临界耦合 Kc
+    Kc, L_dagger_omega = compute_critical_coupling(adj, omega)
+    
+    # 设定 K < Kc 以使得自然状态不稳定
+    # 比如取 0.6 倍 Kc，这样会有很多相位差 > 1 rad 的边
+    K = 0.3 * Kc
+    
+    # 3. 计算控制
+    theta_star, F, drivers = calculate_control(adj, omega, K, epsilon=0.5)
+    
+    # 验证 theta_star 重心是否为 0
+    center_mass = np.mean(theta_star)
+    print(f"\n参数分析:")
+    print(f"  K_critical = {Kc:.4f}")
+    print(f"  当前 K     = {K:.4f}")
+    print(f"  θ* 重心    = {center_mass:.4e} (应接近 0)")
+    print(f"  驱动节点数 = {len(drivers)}")
+    nonzero_F = int(np.count_nonzero(F > 1e-12))
+    print(f"  非零增益数 = {nonzero_F} (min={float(np.min(F)):.3e}, max={float(np.max(F)):.3e})")
+    
+    # 4. 仿真
+    theta0 = rng.uniform(-np.pi, np.pi, N)
+    
+    # 无控制 (F=0)
+    print("运行无控制仿真...")
+    res_unc = run_simulation(omega, K, adj, np.zeros(N), theta_star, theta0)
+    
+    # 有控制
+    print("运行有控制仿真...")
+    res_con = run_simulation(omega, K, adj, F, theta_star, theta0)
 
-    fig = plt.figure(figsize=(20, 10))
+    # 诊断：检查末段是否仍有明显震荡的振子
+    tail_frac = 0.2
+    tail_start = int((1.0 - tail_frac) * len(res_con.t))
+    tail_diff = wrap_to_pi(res_con.theta[tail_start:, :] - theta_star[None, :])
+    tail_std = np.std(tail_diff, axis=0)
+    tail_max = np.max(np.abs(tail_diff), axis=0)
+    unstable_idx = np.where(tail_std > 0.2)[0]
 
-    ax1 = fig.add_subplot(2, 3, 1)
-    ax1.set_title(f"网络拓扑: {topology_name}（红色为驱动节点）")
-    node_colors = ["red" if i in set(drivers) else "skyblue" for i in range(G.number_of_nodes())]
-    pos = nx.spring_layout(G, seed=layout_seed)
-    nx.draw(
-        G,
-        pos,
-        ax=ax1,
-        node_color=node_colors,
-        node_size=60,
-        edge_color="gray",
-        alpha=0.7,
-        linewidths=0.0,
-    )
-
-    ax2 = fig.add_subplot(2, 3, 2)
-    ax2.set_title("同步序参量 r(t) 随时间变化")
-    ax2.plot(unc.t, unc.r, "k--", label="无控制", alpha=0.7)
-    ax2.plot(con.t, con.r, "g-", label="有控制", linewidth=2)
-    ax2.set_ylim(0.0, 1.05)
-    ax2.set_xlabel("时间 t")
-    ax2.set_ylabel("序参量 r")
-    ax2.grid(True, alpha=0.3)
+    print("\n末段相位收敛诊断 (相对 θ*):")
+    print(f"  震荡阈值: std > 0.2 rad")
+    print(f"  仍明显震荡的振子数: {len(unstable_idx)}")
+    if len(unstable_idx) > 0:
+        preview = ", ".join(map(str, unstable_idx[:20]))
+        more = "..." if len(unstable_idx) > 20 else ""
+        print(f"  震荡振子索引: {preview}{more}")
+        worst = int(unstable_idx[np.argmax(tail_std[unstable_idx])])
+        print(f"  最大 std 振子: {worst}, std={tail_std[worst]:.3f}, max|diff|={tail_max[worst]:.3f}")
+    
+    # 5. 绘图（使用彩色轨迹）
+    fig = plt.figure(figsize=(18, 10))
+    
+    # 子图1: 网络
+    ax1 = fig.add_subplot(2, 2, 1)
+    pos = nx.spring_layout(G, seed=SEED)
+    colors = ['red' if i in drivers else 'skyblue' for i in range(N)]
+    nx.draw(G, pos, ax=ax1, node_size=50, node_color=colors, edge_color='#ddd')
+    ax1.set_title(f"网络拓扑 (红色=驱动节点, N={N})")
+    
+    # 子图2: 序参量
+    ax2 = fig.add_subplot(2, 2, 2)
+    ax2.plot(res_unc.t, res_unc.r, 'k--', alpha=0.6, label='无控制')
+    ax2.plot(res_con.t, res_con.r, 'r-', linewidth=2, label='有控制')
+    ax2.set_ylim(0, 1.05)
+    ax2.set_title(f"序参量 r(t) (K={K:.2f})")
     ax2.legend()
-
-    ax3 = fig.add_subplot(2, 3, 4)
-    ax3.set_title("无控制：相位 (θ_i - ψ) - (θ_i* - ψ*)")
-    theta_unc = unc.theta
-    if show_relative_phase:
-        # 消除全局相位漂移：用圆平均对齐
-        # psi(t) = arg(mean(exp(i*theta)))
-        # psi* = arg(mean(exp(i*theta*)))
-        psi_star = float(np.angle(np.mean(np.exp(1j * theta_star))))
-        # 每个时刻减去 (psi(t) - psi*)
-        global_drift = unc.psi - psi_star  # shape (T,)
-        theta_unc = theta_unc - theta_star[None, :] - global_drift[:, None]
-    theta_unc = wrap_to_pi(theta_unc)
-    ax3.plot(unc.t, theta_unc, alpha=0.25, linewidth=0.8)
+    ax2.grid(True, alpha=0.3)
+    
+    # 子图3: 无控制的相位 (相对相位) - 彩色轨迹
+    # 因为无控制时中心会漂移，为了看清是否散开，我们要减去重心 psi
+    ax3 = fig.add_subplot(2, 2, 3)
+    phases_unc = wrap_to_pi(res_unc.theta - res_unc.psi[:, None])
+    
+    # 使用彩色映射绘制每条轨迹
+    cmap = plt.get_cmap("rainbow")
+    for i in range(N):
+        color = cmap(i / N)
+        ax3.plot(res_unc.t, phases_unc[:, i], color=color, alpha=0.6, linewidth=0.8)
+    
+    ax3.set_title("无控制: 相对相位 (θ_i - ψ)")
     ax3.set_ylim(-np.pi, np.pi)
-    ax3.set_xlabel("时间 t")
-    ax3.set_ylabel("相位 θ")
+    ax3.set_ylabel("相位 (rad)")
+    ax3.set_xlabel("时间")
     ax3.grid(True, alpha=0.3)
-
-    ax4 = fig.add_subplot(2, 3, 5)
-    ax4.set_title("有控制：相位 (θ_i - ψ) - (θ_i* - ψ*)（应收敛到 0）")
-    theta_con = con.theta
-    if show_relative_phase:
-        # 消除全局相位漂移
-        psi_star = float(np.angle(np.mean(np.exp(1j * theta_star))))
-        global_drift = con.psi - psi_star
-        theta_con = theta_con - theta_star[None, :] - global_drift[:, None]
-    theta_con = wrap_to_pi(theta_con)
-    ax4.plot(con.t, theta_con, alpha=0.25, linewidth=0.8)
+    
+    # 子图4: 有控制的相位 (绝对相位) - 彩色轨迹
+    # 关键：这里直接画原始 theta，不减去任何东西
+    # 因为理论上 theta_star 重心为0，控制后 theta 应直接收敛到 0 附近
+    ax4 = fig.add_subplot(2, 2, 4)
+    phases_con = wrap_to_pi(res_con.theta)
+    
+    # 使用彩色映射绘制每条轨迹
+    for i in range(N):
+        color = cmap(i / N)
+        ax4.plot(res_con.t, phases_con[:, i], color=color, alpha=0.6, linewidth=0.8)
+    
+    # 画出 theta_star 的范围作为参考
+    # ax4.hlines(theta_star, xmin=0, xmax=res_con.t[-1], colors='gray', alpha=0.3, lw=1.5, linestyles='--')
+    
+    ax4.set_title("有控制: 绝对相位 θ_i (应锁定在 0 附近)")
     ax4.set_ylim(-np.pi, np.pi)
-    ax4.set_xlabel("时间 t")
-    ax4.set_ylabel("相位 θ")
+    ax4.set_xlabel("时间")
+    ax4.set_ylabel("相位 (rad)")
+    ax4.axhline(0, color='blue', linestyle=':', alpha=0.5, linewidth=2, label="中心 0")
+    ax4.legend()
     ax4.grid(True, alpha=0.3)
-
-    # Jacobian 热力图（无控制）
-    ax5 = fig.add_subplot(2, 3, 3)
-    ax5.set_title("Jacobian DF (无控制)")
-    df_no_ctrl = compute_jacobian(adj=adj, theta_star=theta_star, K=K, F=None)
-    vmax = float(np.max(np.abs(df_no_ctrl))) if df_no_ctrl.size else 1.0
-    im1 = ax5.imshow(df_no_ctrl, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="equal")
-    fig.colorbar(im1, ax=ax5, fraction=0.046, pad=0.04)
-    # 添加网格线使每个单元格更清晰
-    N = df_no_ctrl.shape[0]
-    ax5.set_xticks(np.arange(-0.5, N, 1), minor=True)
-    ax5.set_yticks(np.arange(-0.5, N, 1), minor=True)
-    ax5.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
-    ax5.tick_params(which="minor", size=0)
-    ax5.set_xticks(np.arange(0, N, max(1, N // 5)))
-    ax5.set_yticks(np.arange(0, N, max(1, N // 5)))
-    ax5.set_xlabel("j")
-    ax5.set_ylabel("i")
-
-    # Jacobian 热力图（有控制）
-    ax6 = fig.add_subplot(2, 3, 6)
-    ax6.set_title("Jacobian DF (有控制)")
-    df_ctrl = compute_jacobian(adj=adj, theta_star=theta_star, K=K, F=F)
-    vmax2 = float(np.max(np.abs(df_ctrl))) if df_ctrl.size else 1.0
-    im2 = ax6.imshow(df_ctrl, cmap="RdBu_r", vmin=-vmax2, vmax=vmax2, aspect="equal")
-    fig.colorbar(im2, ax=ax6, fraction=0.046, pad=0.04)
-    ax6.set_xticks(np.arange(-0.5, N, 1), minor=True)
-    ax6.set_yticks(np.arange(-0.5, N, 1), minor=True)
-    ax6.grid(which="minor", color="white", linestyle="-", linewidth=0.5)
-    ax6.tick_params(which="minor", size=0)
-    ax6.set_xticks(np.arange(0, N, max(1, N // 5)))
-    ax6.set_yticks(np.arange(0, N, max(1, N // 5)))
-    ax6.set_xlabel("j")
-    ax6.set_ylabel("i")
-
+    
     plt.tight_layout()
     plt.show()
 
-
-def main() -> None:
-    # ===== 论文参数 (Skardal & Arenas) =====
-    # 论文使用 N=1000, <k>=6, K=0.4
-    # 但关键是 K 必须 >= K_critical 才能有稳定的同步态！
-    seed = 12345
-    topology: Topology = "ER"  # "ER" 或 "SF"
-    N = 1000
-    k_mean = 4  # 平均度数
-    epsilon = 0.2  # 论文中建议的缓冲
-    t_max = 100.0
-    steps = 3000
-    
-    # K 将在计算 K_critical 后自动设置
-
-    rng = np.random.default_rng(seed)
-
-    # 1) 生成网络 + 固有频率（均值 0）
-    G, adj, omega = generate_network(N=N, topology=topology, k_mean=k_mean, rng=rng)
-
-    # 2) 计算临界耦合强度（Dörfler & Bullo 理论）
-    K_critical, L_dagger_omega, r_theoretical = compute_critical_coupling(adj=adj, omega=omega)
-
-    # 计算使 theta* 跨度 < 2π 的最小 K
-    theta_span = L_dagger_omega.max() - L_dagger_omega.min()
-    K_min_for_2pi = theta_span / (2 * np.pi)
-    
-    # 要有驱动节点，需要某些边的 cos(Δθ*) < epsilon=0.2
-    # 即 |Δθ*| > arccos(0.2) ≈ 1.37 rad
-    # 即 K < K_critical / 1.37 ≈ 0.73 * K_critical
-    # 同时要保证 theta* 跨度 < 2π，即 K > K_min_for_2pi
-    # K = max(K_min_for_2pi * 1.1, 0.65 * K_critical)
-    K=1
-
-    print(f"\n{'='*60}")
-    print(f"  临界耦合分析")
-    print(f"{'='*60}")
-    print(f"  K_critical (边上最大相位差=1rad) = {K_critical:.4f}")
-    print(f"  K_min (使θ*跨度<2π) = {K_min_for_2pi:.4f}")
-    print(f"  选择 K = {K:.4f}")
-    print(f"  K / K_critical = {K / K_critical:.2f}")
-    theta_star_test = L_dagger_omega / K
-    span_deg = np.degrees(theta_star_test.max() - theta_star_test.min())
-    print(f"  θ* 跨度 = {span_deg:.0f}° (需 < 360°)")
-    max_phase_diff = K_critical / K
-    print(f"  边上最大相位差 = {max_phase_diff:.2f} rad ({np.degrees(max_phase_diff):.0f}°)")
-    print(f"{'='*60}")
-
-    # 3) 计算控制策略
-    theta_star, F, drivers = calculate_control(adj=adj, omega=omega, K=K, epsilon=epsilon)
-
-    print(f"\n--- Skardal & Arenas 控制分析 ({topology}) ---")
-    print(f"驱动节点数量: {len(drivers)} / {N}  (比例 {len(drivers)/N:.1%})")
-    print(f"最大控制增益 max(F_i): {float(np.max(F)):.6f}")
-    # 计算稳态序参量
-    z_star = np.mean(np.exp(1j * theta_star))
-    r_star = float(np.abs(z_star))
-    print(f"目标稳态序参量 r(θ*) = {r_star:.4f}")
-
-    # 4) 统一初始相位：无控制/有控制共用同一 theta0
-    theta0 = rng.uniform(-np.pi, np.pi, size=N)
-
-    print(f"\n正在模拟动力学 (K={K}, 无控制)...")
-    print(f"  注：无控制时若 K < K_critical，系统无法达到稳定同步态")
-    unc = run_simulation(
-        omega=omega,
-        K=K,
-        adj=adj,
-        F=np.zeros(N),
-        theta_star=theta_star,
-        theta0=theta0,
-        t_max=t_max,
-        steps=steps,
-    )
-
-    print(f"正在模拟动力学 (K={K}, 有控制)...")
-    con = run_simulation(
-        omega=omega,
-        K=K,
-        adj=adj,
-        F=F,
-        theta_star=theta_star,
-        theta0=theta0,
-        t_max=t_max,
-        steps=steps,
-    )
-
-    # 5) 画图：相位绘制为 "θ_i(t) - θ_i*" 并包裹到 [-pi, pi]
-    plot_results(
-        G=G,
-        drivers=drivers,
-        unc=unc,
-        con=con,
-        topology_name=topology,
-        layout_seed=seed,
-        theta_star=theta_star,
-        adj=adj,
-        K=K,
-        F=F,
-        show_relative_phase=True,
-    )
-
-
 if __name__ == "__main__":
     main()
-

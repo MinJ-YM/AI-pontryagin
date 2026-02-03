@@ -300,3 +300,8 @@ git branch -vv
 ```
 
 如果是子模块问题，在 `nnc/` 目录里也贴一遍同样三条。
+命令面板直接打开/切换仓库（找不到下拉框时）
+Ctrl+Shift+P 打开命令面板
+运行：Git: Open Repository...（中文界面可能叫“Git: 打开存储库...”）
+选择 F:\AI pontryagin\nnc（或列表里名为 nnc 的那项）
+然后回到 Source Control 面板提交/推送
