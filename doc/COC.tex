@@ -1,0 +1,211 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{authblk}
+\usepackage{hyperref}
+\usepackage{cite}
+
+% 设置页面边距以接近原论文格式
+\geometry{left=1.5cm, right=1.5cm, top=2cm, bottom=2cm}
+
+\title{\textbf{Control of coupled oscillator networks with application to microgrid technologies}}
+
+\author[1,2,*]{Per Sebastian Skardal}
+\author[2]{Alex Arenas}
+
+\affil[1]{Department of Mathematics, Trinity College, Hartford, CT 06106, USA.}
+\affil[2]{Departament d’Enginyeria Informàtica i Matemàtiques, Universitat Rovira i Virgili, 43007 Tarragona, Spain.}
+\affil[*]{Corresponding author. E-mail: persebastian.skardal@trincoll.edu}
+
+\date{Science Advances, 21 August 2015}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The control of complex systems and network-coupled dynamical systems is a topic of vital theoretical importance in mathematics and physics with a wide range of applications in engineering and various other sciences. Motivated by recent research into smart grid technologies, we study the control of synchronization and consider the important case of networks of coupled phase oscillators with nonlinear interactions—a paradigmatic example that has guided our understanding of self-organization for decades. We develop a method for control based on identifying and stabilizing problematic oscillators, resulting in a stable spectrum of eigenvalues, and in turn a linearly stable synchronized state. The amount of control, that is, number of oscillators, required to stabilize the network is primarily dictated by the coupling strength, dynamical heterogeneity, and mean degree of the network, and depends little on the structural heterogeneity of the network itself.
+\end{abstract}
+
+\section{INTRODUCTION}
+
+Complex networks and complex systems describe the physical, biological, and social structures that connect our world and host the dynamical processes vital to our lives (1–3). The failure of such large-scale systems to operate in the desired way can thus lead to catastrophic events such as power outages (4, 5), extinctions (6, 7), and economic collapses (8, 9). Thus, the development and design of efficient and effective control mechanisms for such systems is not only a question of theoretical interest to mathematicians but also has a wide range of important applications in physics, chemistry, biology, engineering, and the social sciences (10, 11).
+
+The roots of modern linear and nonlinear control reach back several decades, but recently, research in this direction has seen a revival in physics and engineering communities. For instance, the concept of ``structural controllability,'' which is based on the paradigm of linear homogeneous dynamical systems, was first introduced by Lin (12) and more recently investigated by Liu \textit{et al.} (13) and Yuan \textit{et al.} (14). These advances have enabled further progress related to structural controllability such as centrality (15), energy (16), effect of correlations (17), emergence of bimodality (18), transition and nonlocality (19), the specific role of individual nodes (20), target control (21), and control of edges in switchboard dynamics (22). Significant advances have also been made in the control of nonlinear systems, for instance, the control of chaotic systems using unstable periodic orbits (23), control via pinning (24–26), control and rescue of networks using compensatory perturbations (27, 28), and control via structural adaptation (29). Implicit in all such network control problems are the following questions: (i) What form(s) of control should one choose? (ii) How much effort is needed to attain a desired state (30)?
+
+Motivated by ongoing studies on the stability and function of power grids (31, 32), we study the control of heterogeneous coupled oscillator networks (33, 34). Recent research into smart grid technologies has shown that certain power grid networks called ``microgrids'' evolve and can be treated as networks of Kuramoto phase oscillators (35). A microgrid consists of a relatively small number of localized sources and loads that, while typically operating in connection to a larger central power grid, can disconnect itself and operate autonomously as may be necessitated by physical or economical constraints. In particular, by means of a method known as ``frequency drooping,'' the dynamics of microgrids become equivalent to Kuramoto oscillator networks—a class of system for which a large body of literature detailing various dynamical phenomena exists (36). Here, we develop a control mechanism for such coupled oscillator networks, thus providing a solution with potentially direct application to the control of certain power grids.
+
+Our goal is to induce a synchronized state (that is, consensus) in a given coupled oscillator network and guarantee asymptotic stability by applying as few control gains to the network as possible. Our method is based on calculating the Jacobian of the desired synchronized state and studying its spectrum, by which we identify the oscillators in the network that contribute to unstable eigenvalues and thus destabilize the synchronized state. Our method not only identifies which oscillators require control but also the required strength of each control gain. We find that the control required to stabilize a network is dictated by the coupling strength, dynamical heterogeneity, and mean degree of the network, and depends little on the structural heterogeneity of the network. That is, the number of nodes requiring control depends surprisingly little on the network topology and degree distribution and is more sensitive to the average connectivity of the network and the dynamical parameters. Although Kuramoto oscillator networks serve as our primary system of interest due to both its specific correlation with microgrids and its rich body of literature, we note that our method can be applied to a much wider set of oscillator networks, provided that their linearized dynamics take a certain form. Moreover, because Kuramoto and other oscillator network models have served as a paradigmatic example for modeling and studying synchronization in various contexts, we hypothesize that our results may shed light more generally on the control of synchronization processes and could potentially give insight into other important applications such as the termination of cardiac arrhythmias (37) and treatments for pathological brain dynamics (38).
+
+\section{RESULTS}
+
+\subsection*{The Kuramoto model}
+We consider the famous Kuramoto model for the entrainment of many coupled dissipative oscillators (39). The Kuramoto model consists of $N$ phase oscillators $\theta_i$ for $i = 1, \dots, N$ that, when placed on a network dictating their pairwise interactions, evolve according to:
+\begin{equation}
+\dot{\theta}_i = \omega_i + K \sum_{j=1}^{N} A_{ij} \sin(\theta_j - \theta_i)
+\end{equation}
+Each oscillator $i$ has a unique natural frequency $\omega_i$ that describes its preferred angular velocity in the absence of interactions, which is typically drawn randomly from a distribution $g(\omega)$. Furthermore, the global coupling strength $K$ describes the influence that oscillators have on one another via the network connectivity, which is encoded in the adjacency matrix $[A_{ij}]$. Here, we focus on the simple case of an undirected, unweighted network ($A_{ij} = 1$ if oscillators $i$ and $j$ are connected by a link and $A_{ij} = 0$ otherwise), but we note that all results presented here easily generalize to directed and weighted networks. We also assume that the network is connected, that is, irreducible. Over the last few decades, the Kuramoto model has proven to be very useful for modeling real-world systems (36, 40), uncovering the mechanisms behind emergent collective behavior (41, 42), exploring additional effects such as time delays (43) and community structure (44), and finding optimal network structure (45).
+
+Depending on the coupling strength $K$, as well as the frequency vector $\boldsymbol{\omega}$ and the network topology, the steady-state dynamics of Eq.~1 can attain many different states that included complete incoherence, partial synchronization, and full synchronization. The latter is characterized by $\lim_{t\to\infty} | \dot{\theta}_j(t) - \dot{\theta}_i(t) | = 0$ and is also referred to as full phase locking, frequency synchronization, or consensus. The fully synchronized state (henceforth called the synchronized state) typically displays a large degree of phase synchronization $r \approx 1$, where $r e^{i\psi} = N^{-1}\sum_{j=1}^{N}e^{i\theta_j}$ is the standard Kuramoto order parameter. In Fig.~1A, we illustrate a synchronized state in a group of five oscillators, each moving with an angular velocity of $\omega$. The order parameter is illustrated as vector of length $r$ with an offset angle $\psi$ from the positive real axis.
+
+\subsection*{Stability and control}
+Here, we address the problem of control by first assuming that because of the system parameters (that is, the coupling strength, natural frequency sequence, or network topology), the steady-state dynamics of Eq.~1 are at least partially incoherent, that is, one or more oscillators remain desynchronized. In the example of the power grid, a single desynchronized oscillator represents a single power failure but can have further damaging effects, in particular, triggering a cascade of additional failures and ultimately a power outage (5). Thus, our goal is to find a synchronized state and stabilize it. If all oscillators are initially synchronized, then our goal is trivially realized; however, our method can be used to make this state more robustly stable. In a synchronized state such as the one we seek here, we expect the oscillators to be clustered in a single reasonably tight cluster such that $|\theta_j - \theta_i| \ll 1$, and thus, Eq.~1 can be linearized to:
+\begin{equation}
+\dot{\theta}_i \approx \omega_i - K \sum_{j=1}^{N} L_{ij}\theta_j
+\end{equation}
+where $L$ is the network Laplacian matrix with entries $L_{ij} = \delta_{ij} \sum_l A_{il} - A_{ij}$, and $\delta_{ij}$ is the Kronecker delta. A straightforward analysis yields a ``target'' synchronized state (within the rotating reference frame $\theta \mapsto \theta + \langle\omega\rangle t$) given by the vector $\boldsymbol{\theta}^* = K^{-1} L^{\dagger} \boldsymbol{\omega}$, where $L^{\dagger}$ is the pseudoinverse of the Laplacian (46). (We summarize a derivation of this result in Materials and Methods.) We note that, because the system is assumed to be partially incoherent, the fixed point $\boldsymbol{\theta} = \boldsymbol{\theta}^*$ either does not exist or is unstable. However, we take $\boldsymbol{\theta} = \boldsymbol{\theta}^*$ to represent the closest synchronized fixed point for the given parameter values, and therefore, we use it as a target. We also note that, although Eq.~2 was directly obtained from linearizing Eq.~1, other systems of more general forms yield equivalent linearizations and therefore can also be controlled using the method we provide here. We present an example of such a general system with arbitrary coupling function [for example, see (47)] in Materials and Methods.
+
+The stability of $\boldsymbol{\theta} = \boldsymbol{\theta}^*$ is dictated by the Jacobian matrix whose entries are defined $[DF]_{ij} = \partial \dot{\theta}_i / \partial \theta_j$, and is stable if all the eigenvalues of $DF|_{\boldsymbol{\theta}^*}$ are nonpositive. In our case, we have that:
+\begin{equation}
+DF_{ij} = 
+\begin{cases} 
+-K\sum_{j\neq i} A_{ij} \cos(\theta_j^* - \theta_i^*) & \text{if } i = j \\
+K A_{ij} \cos(\theta_j^* - \theta_i^*) & \text{otherwise}
+\end{cases}
+\end{equation}
+We note that each row (and column) of $DF$ sums to zero, that is, satisfies $DF_{ii} = -\sum_{j\neq i} DF_{ij}$. This is a particularly convenient property for using the Gershgorin circle theorem (48), which implies that the eigenvalues of $DF$ lie within the union of closed discs $D_i$ for $i = 1, \dots, N$, which are each centered at $DF_{ii}$ and have radius $R_i$, where $R_i = \sum_{j\neq i} |DF_{ij}|$. (The full theorem is given in Materials and Methods.) In particular, if all the off-diagonal entries of $DF$ are nonnegative, then it follows that each Gershgorin disc is contained in the left-half plane, implying that all eigenvalues are nonpositive and the solution is stable. An illustration of this case is presented in Fig.~1B. If, however, one or more nondiagonal entries of $DF$ are negative, then each Gershgorin disc corresponding to a row with a negative off-diagonal entry enters the right-half plane, admitting the possibility for one or more positive eigenvalues and thus destabilization. Thus, the oscillators that require control can be easily identified as those whose corresponding rows have one or more negative off-diagonal entries.
+
+We aim to stabilize the synchronized solution by adding one or more control gains to the system, as illustrated in Fig.~1C. In the following recent literature, we will refer to oscillators to which we apply control as ``driver nodes,'' and to oscillators to which we do not apply control as ``free nodes.'' We choose the control gains to take the form $f_i(t) = F_i \sin(\phi_i - \theta_i)$ where $F_i$ is the strength of the $i$th control gain and $\phi_i$ is a target phase that can, in principle, depend on either local or global information, and vary in time. Here, we focus on the choice of target phase $\phi_i = \theta_i^*$ and discuss other possibilities below. Because the control gain depends on the current state of the system, this can be thought of as a form of feedback control. The new dynamics are then given by:
+\begin{equation}
+\dot{\theta}_i = \omega_i + K \sum_{j=1}^{N} A_{ij} \sin(\theta_j - \theta_i) + F_i \sin(\theta_i^* - \theta_i)
+\end{equation}
+where we take $F_i = 0$ for free nodes. Whereas the off-diagonal entries of $DF$ remain unaltered, the new diagonal entries are given by $DF_{ii} = -K\sum_{j\neq i} A_{ij} \cos(\theta_j^* - \theta_i^*) - F_i$. Thus, we set coupling gain strength of each driver node $i$ such that it satisfies $F_i \ge K\sum_{j\neq i} A_{ij} [ |\cos(\theta_j^* - \theta_i^*)| - \cos(\theta_j^* - \theta_i^*) ]$. This ensures that all Gershgorin discs are contained in the left-half plane, implying that (up to the linear approximation of $\boldsymbol{\theta}^*$) all eigenvalues are nonpositive and the synchronized state is stable.
+
+\begin{figure}[ht]
+\centering
+% \includegraphics[width=\columnwidth]{fig1.png}
+\caption{[Placeholder for Fig 1] Control of coupled oscillator networks. (A to C) For a five-oscillator network, illustration of (A) the fully synchronized state with the Kuramoto order parameter, (B) the Jacobian of a stable synchronized state, and (C) control applied to oscillators $i = 2$ and $3$.}
+\end{figure}
+
+We now briefly comment on the choice of target phases $\phi_i$ in the control gains. In the method outlined above, we have set the target phase equal to the steady-state phase, $\phi_i = \theta_i^*$. This is a convenient choice for the derivation described above. Additionally, we find that, in practice, other choices also yield positive results. In particular, one choice that tends to yield slightly better results is to force each driver node toward the center of the synchronized cluster, that is, $\phi_i = \overline{\phi}$, where we assume that the cluster is centered at the angle $\overline{\phi}$. Target phases can also be chosen according to global or distributed control strategies. In particular, given the standard Kuramoto order parameter $r e^{i\psi} = \sum_j e^{i\theta_j} / N$ or the set of local order parameters $r_i e^{i\psi_i} = \sum_j A_{ij} e^{i\theta_j}$, the choices $\phi_i = \psi$ and $\phi_i = \psi_i$ correspond to global and distributed control strategies that typically yield favorable results. We also note before presenting examples that because the method outlined above depends on the approximation of the steady-state solution $\boldsymbol{\theta}^* \approx K^{-1} L^{\dagger}\boldsymbol{\omega}$, in practice, we add a buffer margin when identifying unstable oscillators, looking for nondiagonal entries of $DF$ that are not necessarily negative, but rather less than some $\epsilon > 0$. We find that the choice $\epsilon = 0.2$ is sufficient, and is what we use in the examples below.
+
+\subsection*{Control of random networks}
+We now demonstrate our approach by considering two types of random networks: Erdős-Rényi (ER) (49) networks and scale-free (SF) networks. Each ER network is constructed using a fixed link probability $p$, and each SF network is built using the configuration model (50) with a degree sequence drawn from the distribution $P(k) \propto k^{-\gamma}$ with $\gamma = 3$ and enforced minimum degree $k_0$. To tune the mean degree $\langle k \rangle$ of each network, we set either $p = \langle k \rangle/(N - 1)$ or $k_0 = \langle k \rangle (\gamma - 1)$. Figure 2 illustrates our results with an example of each type of network, where we have used networks of size $N = 1000$ with mean degree $\langle k \rangle = 6$, set the coupling strength $K = 0.4$, and used natural frequencies drawn from a uniform distribution with zero mean and unit variance. The top and bottom rows display the results for the ER and SF networks, respectively, displaying the time series $\theta(t)$ of a randomly selected 10\% of the oscillators without control (Fig.~2, A and D) and with control (Fig.~2, B and E), after discarding a long transient. The difference between no control to control is quite drastic, with a large fraction of desynchronized oscillators without control, and full synchronization with control. Driver nodes constituted 37.1 and 44.5\% of the ER and SF networks, respectively, to attain the synchronized state. In Fig.~2 (C and F), we present the degree of phase synchronization, plotting the order parameter $r(t)$ for both solutions with and without control. Unlike the solution without control, which fluctuates significantly at a relative low value, the solution with control reaches a steady value near $r(t) \approx 1$.
+
+\begin{figure}[ht]
+\centering
+% \includegraphics[width=\columnwidth]{fig2.png}
+\caption{[Placeholder for Fig 2] Control of coupled oscillator networks: Random networks. Example of control applied to a coupled oscillator network with ER and SF topologies.}
+\end{figure}
+
+Next, we investigate the properties of driver and free nodes by revisiting our method. This is an essential question because of the heterogeneity of the oscillators in terms of both network structure (that is, degree distribution) and local dynamics (that is, natural frequencies). An oscillator $i$ is a driver node if one of its off-diagonal entries $DF_{ij} \propto \cos(\theta_j^* - \theta_i^*)$ is negative, and therefore, oscillators with large (small) steady-state values $\theta_i^* \propto |[L^{\dagger}\boldsymbol{\omega}]_i|$ tend to be driver (free) nodes. Furthermore, we find that these values scale approximately linearly with the ratio of the natural frequencies to degrees, that is, $[L^{\dagger}\boldsymbol{\omega}]_i \propto \omega_i / k_i$. We illustrate this in Fig.~3, where we plot the relationship $[L^{\dagger}\boldsymbol{\omega}]_i$ versus $\omega_i / k_i$ for the example ER and SF networks presented above (Fig.~3, A and B, respectively), denoting driver nodes with red crosses and free nodes with blue circles. These results show the important role that dynamics, in addition to network structure, plays in dictating controlling the system. In particular, driver nodes of the system tend to balance a large ratio (in absolute value) of natural frequencies to degrees.
+
+\begin{figure}[ht]
+\centering
+% \includegraphics[width=\columnwidth]{fig3.png}
+\caption{[Placeholder for Fig 3] Driver and free nodes. $[L^{\dagger}\omega]_i$ versus $\omega_i/k_i$ for driver (red crosses) and free (blue circles) nodes in the ER (A) and SF (B) networks used in Fig. 2.}
+\end{figure}
+
+Finally, we quantify the overall effort required for consensus by studying how the fraction of driver nodes, denoted $n_D = N_D/N$, where $N_D$ is the total number of driver nodes, depends on both the system's dynamical and structural parameters. Presenting our results in Fig.~4, we first explore how the fraction of driver nodes depends on the coupling strength by plotting in Fig.~4A $n_D$ versus $K$ for both ER and SF networks with mean degrees $\langle k \rangle = 4, 8,$ and $12$. Results for ER and SF networks are plotted with unfilled and filled symbols, respectively, and each curve represents an average of over 100 network realizations, each averaged over 100 random natural frequency realizations. Although it is expected that $n_D$ decreases monotonically with $K$, the curves' dependence on network topology and mean degree is nontrivial. In particular, the shape of $n_D$ versus $K$ depends more sensitively on the mean degree than the topology, suggesting that network heterogeneity has little effect on overall control in comparison to average connectivity. In light of the significant dependence of overall control on the coupling strength, we investigate the coupling strength required to synchronize a network if a limited amount of control is available. To this end, we calculate for each family of networks the required coupling strengths $K_{5\%}$, $K_{10\%}$, and $K_{20\%}$ for which, on average, a fraction $n_D = 0.05, 0.1$, and $0.2$ will achieve synchronization as a function of the average degree $\langle k \rangle$. We plot the results in Fig.~4B. We point out again that ER and SF networks behave very similarly on average, and that with a larger mean degree, a smaller coupling strength is required to achieve synchronization.
+
+\begin{figure}[ht]
+\centering
+% \includegraphics[width=\columnwidth]{fig4.png}
+\caption{[Placeholder for Fig 4] Fraction of driver nodes. (A) Fraction of driver nodes $n_D$ as a function of coupling strength $K$. (B) Required coupling strengths $K_{5\%}, K_{10\%}, K_{20\%}$ as a function of mean degree.}
+\end{figure}
+
+\section{DISCUSSION}
+
+The theoretical and practical aspects of the control of dynamical processes remain important and ongoing areas of interdisciplinary research at the intersection between mathematics, physics, biology, chemistry, engineering, and the social sciences. The control of complex networks and complex systems is particularly important because, together, they comprise most of the world we live in (51); however, the nonlinear nature of realistic dynamical processes and the complex network topologies of real networks represent challenges for the scientific community. Building on concepts from classical linear control theory (12), recent work has made significant advances in understanding structural controllability (13, 14), and significant progress has been made in the development of control mechanisms for networks of nonlinear systems (23, 24, 28). Nonetheless, because of the problem-sensitive nature of most real-world problems and applications requiring control techniques, further progress in designing and implementing efficient and effective control mechanisms for a wide range of problems with practical constraints remains an important avenue of research.
+
+Here, we have focused on the control of synchronization (that is, consensus) in coupled oscillator networks. Our primary inspiration has been advances in the research of power grid networks (52, 53). In particular, recent studies have shown that certain power grids known as microgrids can be treated as Kuramoto oscillator networks (35, 39). Here, we have presented a control method that can easily be applied to Kuramoto networks and other phase oscillator networks, thus providing a control framework with potentially direct application to these new technologies. Our method is based on identifying and stabilizing a synchronized state for a given network via spectral properties of the Jacobian matrix, and we have demonstrated its effectiveness on both ER and SF networks. We have observed that driver nodes, that is, oscillators that require control, tend to balance (in absolute value) large natural frequencies with small degrees. Furthermore, the overall amount of control required to achieve synchronization decreases with both coupling strength and mean degree, whereas the total effort required to attain a synchronized state depends sensitively on the average connectivity of the network and the dynamical parameters, but surprisingly little on the network topology and degree distribution. These results enhance our understanding of and ability to understand, optimize, and ultimately control synchronization in power grid networks [see, in particular, (5, 32)], and more generally complement important work on the control of network-coupled nonlinear dynamical systems (26, 28, 29).
+
+Although our central inspiration and target application are in the area of power grid technology, synchronization phenomenon plays a vital role in a variety of complex processes that occur in both natural and manmade systems, including healthy cardiac behavior (54), functionality of cell circuits (55), stability of pedestrian bridges (56), and communications security (57). Given this broad range of applications, we hypothesize that our findings here may potentially shed some light on the control of synchronization in other contexts, such as cardiac physiology and neuroscience. For instance, a large amount of research has recently been devoted to the development of cardiac arrhythmia treatments that require minimal shock to knock out fatal asynchronous behavior such as cardiac fibrillation (58) and the promotion of normal brain oscillations (59) while repressing disorders such as Parkinson's disease, which are associated with abnormal oscillations (60).
+
+\section{MATERIALS AND METHODS}
+
+\subsection*{Steady-state solution}
+To derive the steady-state solution $\boldsymbol{\theta}^* = K^{-1} L^{\dagger} \boldsymbol{\omega}$, we begin with Eq.~2, which represents the linearized dynamics of Eq.~1. Recall that this linearization requires that we are searching for a synchronized state where all oscillators are tightly packed in a single cluster, so we expect that $|\theta_j - \theta_i| \ll 1$. We also note that the mean frequency of all oscillators is given by the mean natural frequency $\langle \omega \rangle$. For simplicity, we enter the rotating frame $\theta \mapsto \theta + \langle \omega \rangle t$, effectively setting the mean frequency to zero. It is then convenient to write Eq.~2 in vector form, that is:
+\begin{equation}
+\dot{\boldsymbol{\theta}} \approx \boldsymbol{\omega} - K L \boldsymbol{\theta}
+\end{equation}
+where $L$ is the network Laplacian whose entries are defined $L_{ij} = \delta_{ij} \sum_l A_{il} - A_{ij}$. Although $L$ has a zero eigenvalue, denoted $\lambda_1 = 0$, rendering it noninvertible, it does have a pseudoinverse defined using its other eigenvalues (which are nonzero provided that the network is connected) and corresponding eigenvectors, $L^{\dagger} = \sum_{j=2}^N \lambda_j^{-1} v^j v^{jT}$ (46). Each eigenvector is normalized such that $\{ v^j \}_{j=2}^N$ forms an orthonormal basis for the space of vectors in $\mathbb{R}^N$ with zero mean. Thus, both $L$ and $L^{\dagger}$ share a null space, which is spanned by the eigenvector $v^1 \propto 1$, and therefore map vectors onto the space of zero-mean vectors in $\mathbb{R}^N$. With the pseudoinverse in hand, we can finally obtain the desired steady-state solution by setting $\dot{\boldsymbol{\theta}} = 0$ and solving for $\boldsymbol{\theta}$, which yields the solution $\boldsymbol{\theta}^* = K^{-1} L^{\dagger} \boldsymbol{\omega}$, as desired.
+
+\subsection*{General oscillator networks}
+Here, we present an example of a more general oscillator network than that in Eq.~1 that can be controlled using the same method detailed above. In particular, we generalize to account for an arbitrary coupling function $H(\theta)$, yielding:
+\begin{equation}
+\dot{\theta}_i = \omega_i + K \sum_{j=1}^{N} A_{ij} H(\theta_j - \theta_i)
+\end{equation}
+We assume that $H(\theta)$ is $2\pi$ periodic and at least once continuously differentiable. $H$ need not satisfy $H(0) = 0$, and thus, coupling between neighboring oscillators can be ``frustrated'' (47), denoting that even when two oscillators are exactly equal, their interaction term does not vanish. Provided that the coupling frustration is not too large, for example, $H(0)/\sqrt{2 H'(0)} \ll 1$, a tightly clustered synchronized state is attainable, and linearizing Eq.~6 yields:
+\begin{equation}
+\dot{\theta}_i \approx \omega_i + KH(0)k_i - KH'(0) \sum_{j=1}^{N} L_{ij} \theta_j
+\end{equation}
+By defining the quantities $\tilde{\omega}_i = \omega_i + KH(0)k_i$ and $\tilde{K} = KH'(0)$, it is easy to see that the linearized dynamics of Eq.~7 are of the same form as Eq.~2, and therefore, the control method we present above can be readily applied.
+
+\subsection*{Gershgorin circle theorem}
+\textbf{Definition (Gershgorin discs).} Let $M$ be an $N \times N$ complex matrix. For $i = 1, \dots, N$, let $R_i = \sum_{j\neq i} |M_{ij}|$ be the sum of absolute values of non-diagonal elements of row $i$, and define $D(M_{ii}, R_i)$ closed disc of radius $R_i$ centered at $M_{ii}$. $D_i = D(M_{ii}, R_i)$ is the $i$th Gershgorin disc.
+
+\textbf{Theorem (Gershgorin).} All eigenvalues of the matrix $M$ lie within the union $\cup_{i=1}^N D_i$ of Gershgorin discs.
+
+\section*{REFERENCES AND NOTES}
+
+\begin{thebibliography}{99}
+\bibitem{Strogatz2001} S. H. Strogatz, Exploring complex networks. \textit{Nature} \textbf{410}, 268–276 (2001).
+\bibitem{Newman2003} M. E. J. Newman, The structure and function of complex networks. \textit{SIAM Rev.} \textbf{45}, 167–256 (2003).
+\bibitem{Boccaletti2006} S. Boccaletti, V. Latora, Y. Moreno, M. Chavez, D.-U. Hwang, Complex networks: Structure and dynamics. \textit{Phys. Rep.} \textbf{424}, 175–308 (2006).
+\bibitem{Buldyrev2010} S. V. Buldyrev, R. Parshani, G. Paul, H. E. Stanley, S. Havlin, Catastrophic cascade of failures in interdependent networks. \textit{Nature} \textbf{464}, 1025–1028 (2010).
+\bibitem{Motter2013} A. E. Motter, S. A. Myers, M. Anghel, T. Nishikawa, Spontaneous synchrony in power-grid networks. \textit{Nat. Phys.} \textbf{9}, 191–197 (2013).
+\bibitem{Pace1999} M. L. Pace, J. J. Cole, S. R. Carpenter, J. F. Kitchell, Trophic cascades revealed in diverse ecosystems. \textit{Trends Ecol. Evol.} \textbf{14}, 483–488 (1999).
+\bibitem{Scheffer2001} M. Scheffer, S. Carpenter, J. A. Foley, C. Folke, B. Walker, Catastrophic shifts in ecosystems. \textit{Nature} \textbf{413}, 591–596 (2001).
+\bibitem{May2008} R. M. May, S. A. Levin, G. Sugihara, Complex systems: Ecology for bankers. \textit{Nature} \textbf{451}, 893–895 (2008).
+\bibitem{Haldane2011} A. G. Haldane, R. M. May, Systemic risk in banking ecosystems. \textit{Nature} \textbf{469}, 351–355 (2011).
+\bibitem{Siljak1991} D. D. Šiljak, \textit{Decentralized Control of Complex Systems} (Academic Press, Boston, 1991).
+\bibitem{Slotine1991} J.-J. Slotine, W. Li, \textit{Applied Nonlinear Control} (Prentice-Hall, Englewood Cliffs, NJ, 1991).
+\bibitem{Lin1974} C.-T. Lin, Structural controllability. \textit{IEEE Trans. Autom. Control} \textbf{19}, 201–208 (1974).
+\bibitem{Liu2011} Y.-Y. Liu, J.-J. Slotine, A.-L. Barabási, Controllability of complex networks. \textit{Nature} \textbf{473}, 167–173 (2011).
+\bibitem{Yuan2013} Z. Yuan, C. Zhao, Z. Di, W.-X. Wang, Y.-C. Lai, Exact controllability of complex networks. \textit{Nat. Commun.} \textbf{4}, 2447 (2013).
+\bibitem{Liu2012} Y.-Y. Liu, J.-J. Slotine, A.-L. Barabási, Control centrality and hierarchical structure in complex networks. \textit{PLOS One} \textbf{7}, e444459 (2012).
+\bibitem{Yan2012} G. Yan, J. Ren, Y.-C. Lai, C.-H. Lai, B. Li, Controlling complex networks: How much energy is needed? \textit{Phys. Rev. Lett.} \textbf{108}, 218703 (2012).
+\bibitem{Posfai2013} M. Pósfai, Y.-Y. Liu, J.-J. Slotine, A.-L. Barabási, Effect of correlations on network controllability. \textit{Sci. Rep.} \textbf{3}, 1067 (2013).
+\bibitem{Jia2013} T. Jia, Y.-Y. Liu, E. Csóka, M. Pósfai, J.-J. Slotine, A.-L. Barabási, Emergence of bimodality in controlling complex networks. \textit{Nat. Commun.} \textbf{4}, 2002 (2013).
+\bibitem{Sun2013} J. Sun, A. E. Motter, Controllability transition and nonlocality in network control. \textit{Phys. Rev. Lett.} \textbf{110}, 208701 (2013).
+\bibitem{Menichetti2014} G. Menichetti, L. Dall’Asta, G. Bianconi, Network controllability is determined by the density of low in-degree and out-degree nodes. \textit{Phys. Rev. Lett.} \textbf{113}, 078701 (2014).
+\bibitem{Gao2014} J. Gao, Y.-Y. Liu, R. M. D’Souza, A.-L. Barabási, Target control of complex networks. \textit{Nat. Commun.} \textbf{5}, 5415 (2014).
+\bibitem{Nepusz2012} T. Nepusz, T. Vicsek, Controlling edge dynamics in complex networks. \textit{Nat. Phys.} \textbf{8}, 568–573 (2012).
+\bibitem{Ott1990} E. Ott, C. Grebogi, J. A. Yorke, Controlling chaos. \textit{Phys. Rev. Lett.} \textbf{64}, 1196–1199 (1990).
+\bibitem{Grigoriev1997} R. O. Grigoriev, M. C. Cross, H. G. Schuster, Pinning control of spatiotemporal chaos. \textit{Phys. Rev. Lett.} \textbf{79}, 2795–2798 (1997).
+\bibitem{Wang2002} X. F. Wang, G. Chen, Pinning control of scale-free dynamical networks. \textit{Phys. A} \textbf{310}, 521–531 (2002).
+\bibitem{Li2004} X. Li, X. F. Wang, G. Chen, Pinning a complex dynamical network to its equilibrium. \textit{IEEE Trans. Circuits Syst. I: Fundam. Theory Appl.} \textbf{51}, 2074–2087 (2004).
+\bibitem{Sahasrabudhe2011} S. Sahasrabudhe, A. E. Motter, Rescuing ecosystems from extinction cascades through compensatory perturbations. \textit{Nat. Commun.} \textbf{2}, 170 (2011).
+\bibitem{Cornelius2013} S. P. Cornelius, W. L. Kath, A. E. Motter, Realistic control of network dynamics. \textit{Nat. Commun.} \textbf{4}, 1942 (2013).
+\bibitem{DeLellis2010} P. DeLellis, M. di Bernardo, T. E. Gorochowski, G. Russo, Synchronization and control of complex networks via contraction, adaptation and evolution. \textit{IEEE Circuits Syst. Mag.} \textbf{10}, 64–82 (2010).
+\bibitem{Pasqualetti2014} F. Pasqualetti, S. Zampieri, F. Bullo, Controllability metrics, limitations and algorithms for complex networks. \textit{IEEE Trans. Control Netw. Syst.} \textbf{1}, 40–52 (2014).
+\bibitem{Rohden2012} M. Rohden, A. Sorge, M. Timme, D. Witthaut, Self-organized synchronization in decentralized power grids. \textit{Phys. Rev. Lett.} \textbf{109}, 064101 (2012).
+\bibitem{Dorfler2013} F. Dörfler, M. Chertkov, F. Bullo, Synchronization in complex oscillator networks and smart grids. \textit{Proc. Natl. Acad. Sci. U.S.A.} \textbf{110}, 2005–2010 (2013).
+\bibitem{Dorfler2014} F. Dörfler, M. R. Jovanović, M. Chertkov, F. Bullo, Sparsity-promoting optimal wide-area control of power networks. \textit{IEEE Trans. Power Syst.} \textbf{29}, 2281–2291 (2014).
+\bibitem{Fardad2014} M. Fardad, F. Lin, M. R. Jovanović, Design of optimal sparse interconnection graphs for synchronization of oscillator networks. \textit{IEEE Trans. Autom. Control} \textbf{59}, 2457–2462 (2014).
+\bibitem{Simpson2013} J. W. Simpson-Porco, F. Dörfler, F. Bullo, Synchronization and power sharing for droop-controlled inverters in islanded microgrids. \textit{Automatica} \textbf{49}, 2603–2611 (2013).
+\bibitem{Arenas2008} A. Arenas, A. Díaz-Guilera, J. Kurths, Y. Moreno, C. Zhou, Synchronization in complex networks. \textit{Phys. Rep.} \textbf{469}, 93–153 (2008).
+\bibitem{Karma2013} A. Karma, Physics of cardiac arrhythmogenesis. \textit{Annu. Rev. Condens. Matter Phys.} \textbf{4}, 313–337 (2013).
+\bibitem{Schnitzler2005} A. Schnitzler, J. Gross, Normal and pathological oscillatory communication in the brain. \textit{Nat. Rev. Neurosci.} \textbf{6}, 285–296 (2005).
+\bibitem{Kuramoto1984} Y. Kuramoto, \textit{Chemical Oscillations, Waves, and Turbulence} (Springer, New York, 1984).
+\bibitem{Dorfler2014b} F. Dörfler, F. Bullo, Synchronization in complex networks of phase oscillators: A survey. \textit{Automatica} \textbf{50}, 1539–1564 (2014).
+\bibitem{Strogatz2003} S. H. Strogatz, \textit{Sync: The Emerging Science of Spontaneous Order} (Hyperion, New York, 2003).
+\bibitem{Ott2008} E. Ott, T. M. Antonsen, Low dimensional behavior of large systems of globally coupled oscillators. \textit{Chaos} \textbf{18}, 037113 (2008).
+\bibitem{Lee2009} W. S. Lee, E. Ott, T. M. Antonsen, Large coupled oscillator systems with heterogeneous interaction delays. \textit{Phys. Rev. Lett.} \textbf{103}, 044101 (2009).
+\bibitem{Skardal2012} P. S. Skardal, J. G. Restrepo, Hierarchical synchrony of phase oscillators in modular networks. \textit{Phys. Rev. E Stat. Nonlin. Soft Matter Phys.} \textbf{85}, 016208 (2012).
+\bibitem{Skardal2014} P. S. Skardal, D. Taylor, J. Sun, Optimal synchronization of complex networks. \textit{Phys. Rev. Lett.} \textbf{113}, 144101 (2014).
+\bibitem{BenIsrael1974} A. Ben-Israel, T. N. E. Grenville, \textit{Generalized Inverses} (Springer, New York, 1974).
+\bibitem{Skardal2015} P. S. Skardal, D. Taylor, J. Sun, A. Arenas, Erosion of synchronization in networks of coupled oscillators. \textit{Phys. Rev. E Stat. Nonlin. Soft Matter Phys.} \textbf{91}, 010802 (2015).
+\bibitem{Golub1996} G. H. Golub, C. F. Van Loan, \textit{Matrix Computations} (Johns Hopkins University Press, Baltimore, 1996).
+\bibitem{Erdos1960} P. Erdős, A. Rényi, On the evolution of random graphs. \textit{Publ. Math. Inst. Hung. Acad. Sci.} \textbf{5}, 17–61 (1960).
+\bibitem{Molloy1995} M. Molloy, B. Reed, A critical point for random graphs with a given degree sequence. \textit{Random Struct. Algor.} \textbf{6}, 161–180 (1995).
+\bibitem{Meyn2008} S. P. Meyn, \textit{Control Techniques for Complex Networks} (Cambridge Univ. Press, Cambridge, 2008).
+\bibitem{Gellings2004} C. W. Gellings, K. E. Yeagee, Transforming the electric infrastructure. \textit{Phys. Today} \textbf{57}, 45–51 (2004).
+\bibitem{Dorfler2012} F. Dörfler, F. Bullo, Synchronization and transient stability in power networks and non-uniform Kuramoto oscillators. \textit{SIAM J. Control Optim.} \textbf{50}, 1616–1642 (2012).
+\bibitem{Karma2007} A. Karma, R. F. Gilmour, Nonlinear dynamics of heart rhythm disorders. \textit{Phys. Today} \textbf{60}, 51–57 (2007).
+\bibitem{Prindle2011} A. Prindle, P. Samayoa, I. Razinkov, T. Danino, L. S. Tsimring, J. Hasty, A sensing array of radically coupled genetic ‘biopixels’. \textit{Nature} \textbf{481}, 39–44 (2011).
+\bibitem{Strogatz2005} S. H. Strogatz, D. M. Abrams, A. McRobie, B. Eckhardt, E. Ott, Theoretical mechanics: Crowd synchrony on the Millennium Bridge. \textit{Nature} \textbf{438}, 43–44 (2005).
+\bibitem{Cuomo1993} K. M. Cuomo, A. V. Oppenheim, Circuit implementation of synchronized chaos with applications to communications. \textit{Phys. Rev. Lett.} \textbf{71}, 65–68 (1993).
+\bibitem{Luther2011} S. Luther, F. H. Fenton, B. G. Kornreich, A. Squires, P. Bittihn, D. Hornung, M. Zabel, J. Flanders, A. Gladuli, L. Campoy, E. M. Cherry, G. Luther, G. Hasenfuss, V. I. Krinsky, A. Pumir, R. F. Gilmour Jr., E. Bodenschatz, Low-energy control of electrical turbulence in the heart. \textit{Nature} \textbf{475}, 235–239 (2011).
+\bibitem{Gross2004} J. Gross, F. Schmitz, I. Schnitzler, K. Kessler, K. Shapiro, B. Hommel, A. Schnitzler, Modulation of long-range neural synchrony reflects temporal limitations of visual attention in humans. \textit{Proc. Natl. Acad. Sci. U.S.A.} \textbf{101}, 13050–13055 (2004).
+\bibitem{Hammond2007} C. Hammond, H. Bergman, P. Brown, Pathological synchronization in Parkinson’s disease: Networks, models and treatments. \textit{Trends Neurosci.} \textbf{30}, 357–364 (2007).
+
+\end{thebibliography}
+
+\end{document}
