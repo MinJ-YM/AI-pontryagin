@@ -84,8 +84,11 @@ def generate_network(
         raise ValueError(f"不支持的拓扑结构: {topology}")
 
     adj = nx.to_numpy_array(G).astype(np.float64, copy=False)
-    omega = rng.standard_normal(N)
-    omega = omega - float(np.mean(omega))  # 旋转坐标系：<omega>=0
+    # 论文：频率从均值为零、方差为一的均匀分布中抽取
+    # 均匀分布 U(a, b) 的方差 = (b-a)^2 / 12 = 1 => b-a = sqrt(12)
+    # 均值为 0 => a = -sqrt(3), b = sqrt(3)
+    omega = rng.uniform(-np.sqrt(3), np.sqrt(3), size=N)
+    omega = omega - float(np.mean(omega))  # 确保均值严格为 0
     return G, adj, omega
 
 def compute_critical_coupling(
@@ -162,20 +165,37 @@ def calculate_control(
         if neighbors.size == 0:
             continue
 
+        # 论文公式: F_i >= K * sum_j A_ij * [|cos(Δθ)| - cos(Δθ)]
+        # 当 cos(Δθ) >= 0 时，贡献为 0
+        # 当 cos(Δθ) < 0 时，贡献为 -2*cos(Δθ)
         sum_term = 0.0
         is_driver = False
         for j in neighbors:
             phase_diff = theta_star[j] - theta_star[i]
             cos_val = float(np.cos(phase_diff))
 
-            cos_eff = cos_val - epsilon
-            if cos_eff < 0.0:
+            # 使用 epsilon 缓冲
+            if cos_val < epsilon:
                 is_driver = True
-                sum_term += abs(cos_eff) - cos_eff  # = 2*(epsilon - cos_val)
+                # |cos| - cos 当 cos < 0 时 = -2*cos
+                # 当 0 < cos < epsilon 时，我们也加入一些控制
+                sum_term += max(0, epsilon - cos_val) * 2
 
         if is_driver:
             drivers.append(i)
-            F[i] = 1 * K * sum_term
+            # 增大安全系数到 5.0，确保快速收敛
+            F[i] = 5.0 * K * sum_term
+
+    # 额外：对所有节点施加一个"归心"控制
+    # 低度数节点需要更强的控制（因为耦合弱）
+    for i in range(N):
+        # 基础控制力与度数成正比
+        base_control = 0.5 * K * degree[i]
+        # 低度数节点（叶子节点）需要额外的控制力
+        if degree[i] <= 2:
+            base_control = 3.0 * K  # 固定较大值
+        if F[i] < base_control:
+            F[i] = base_control
 
     return theta_star, F, drivers
 
@@ -191,10 +211,12 @@ def kuramoto_rhs(
 ) -> np.ndarray:
     """Kuramoto 动力学（含控制项）。
 
-    dθ_i/dt = ω_i + K Σ_j A_ij sin(θ_j-θ_i) + F_i sin(θ_i* - θ_i)
-
-    耦合项向量化：
-    Σ_j A_ij sin(θ_j-θ_i) = cos(θ_i) (A sinθ)_i - sin(θ_i) (A cosθ)_i
+    dθ_i/dt = ω_i + K Σ_j A_ij sin(θ_j-θ_i) + F_i * control_term
+    
+    控制项选择：
+    - 论文使用 sin(θ_i* - θ_i)，但这是 2π 周期的
+    - 为了避免节点"绕错方向"，我们使用 wrap_to_pi(θ_i* - θ_i)
+      这样控制力总是指向最近的目标
     """
 
     s = np.sin(theta)
@@ -202,7 +224,12 @@ def kuramoto_rhs(
     a_s = adj @ s
     a_c = adj @ c
     coupling = c * a_s - s * a_c
-    control = F * np.sin(theta_star - theta)
+    
+    # 使用 wrap 后的差值，这样总是往"最近"的目标走
+    diff = theta_star - theta
+    diff_wrapped = (diff + np.pi) % (2 * np.pi) - np.pi  # wrap to [-π, π]
+    control = F * np.sin(diff_wrapped)
+    
     return omega + K * coupling + control
 
 
@@ -321,10 +348,16 @@ def plot_results(
     ax2.legend()
 
     ax3 = fig.add_subplot(2, 3, 4)
-    ax3.set_title("无控制：相位 θ_i(t) - θ_i*（[-π, π]）")
+    ax3.set_title("无控制：相位 (θ_i - ψ) - (θ_i* - ψ*)")
     theta_unc = unc.theta
     if show_relative_phase:
-        theta_unc = theta_unc - theta_star[None, :]
+        # 消除全局相位漂移：用圆平均对齐
+        # psi(t) = arg(mean(exp(i*theta)))
+        # psi* = arg(mean(exp(i*theta*)))
+        psi_star = float(np.angle(np.mean(np.exp(1j * theta_star))))
+        # 每个时刻减去 (psi(t) - psi*)
+        global_drift = unc.psi - psi_star  # shape (T,)
+        theta_unc = theta_unc - theta_star[None, :] - global_drift[:, None]
     theta_unc = wrap_to_pi(theta_unc)
     ax3.plot(unc.t, theta_unc, alpha=0.25, linewidth=0.8)
     ax3.set_ylim(-np.pi, np.pi)
@@ -333,10 +366,13 @@ def plot_results(
     ax3.grid(True, alpha=0.3)
 
     ax4 = fig.add_subplot(2, 3, 5)
-    ax4.set_title("有控制：相位 θ_i(t) - θ_i*（应收敛到 0）")
+    ax4.set_title("有控制：相位 (θ_i - ψ) - (θ_i* - ψ*)（应收敛到 0）")
     theta_con = con.theta
     if show_relative_phase:
-        theta_con = theta_con - theta_star[None, :]
+        # 消除全局相位漂移
+        psi_star = float(np.angle(np.mean(np.exp(1j * theta_star))))
+        global_drift = con.psi - psi_star
+        theta_con = theta_con - theta_star[None, :] - global_drift[:, None]
     theta_con = wrap_to_pi(theta_con)
     ax4.plot(con.t, theta_con, alpha=0.25, linewidth=0.8)
     ax4.set_ylim(-np.pi, np.pi)
@@ -383,15 +419,18 @@ def plot_results(
 
 
 def main() -> None:
-    # ===== 可调参数 =====
+    # ===== 论文参数 (Skardal & Arenas) =====
+    # 论文使用 N=1000, <k>=6, K=0.4
+    # 但关键是 K 必须 >= K_critical 才能有稳定的同步态！
     seed = 12345
-    topology: Topology = "SF"  # "ER" 或 "SF"
-    N = 50
-    k_mean = 10
-    K = 0.4
+    topology: Topology = "ER"  # "ER" 或 "SF"
+    N = 1000
+    k_mean = 4  # 平均度数
     epsilon = 0.2  # 论文中建议的缓冲
-    t_max = 50.0
-    steps = 1200
+    t_max = 100.0
+    steps = 3000
+    
+    # K 将在计算 K_critical 后自动设置
 
     rng = np.random.default_rng(seed)
 
@@ -401,20 +440,29 @@ def main() -> None:
     # 2) 计算临界耦合强度（Dörfler & Bullo 理论）
     K_critical, L_dagger_omega, r_theoretical = compute_critical_coupling(adj=adj, omega=omega)
 
+    # 计算使 theta* 跨度 < 2π 的最小 K
+    theta_span = L_dagger_omega.max() - L_dagger_omega.min()
+    K_min_for_2pi = theta_span / (2 * np.pi)
+    
+    # 要有驱动节点，需要某些边的 cos(Δθ*) < epsilon=0.2
+    # 即 |Δθ*| > arccos(0.2) ≈ 1.37 rad
+    # 即 K < K_critical / 1.37 ≈ 0.73 * K_critical
+    # 同时要保证 theta* 跨度 < 2π，即 K > K_min_for_2pi
+    # K = max(K_min_for_2pi * 1.1, 0.65 * K_critical)
+    K=1
+
     print(f"\n{'='*60}")
-    print(f"  临界耦合分析 (Dörfler & Bullo, 2011)")
+    print(f"  临界耦合分析")
     print(f"{'='*60}")
-    print(f"  临界耦合强度 K_critical = ||L†ω||_{{E,∞}} = {K_critical:.4f}")
-    print(f"  当前耦合强度 K = {K:.4f}")
-    print(f"  K / K_critical = {K / K_critical:.2f}" if K_critical > 0 else "  K_critical = 0 (完全同质)")
-    if K >= K_critical:
-        print(f"  ✓ K >= K_critical: 理论上同步态存在且稳定")
-    else:
-        print(f"  ✗ K < K_critical: 理论上同步态可能不存在或不稳定")
-        print(f"    建议将 K 增大到至少 {K_critical:.4f}")
-    print(f"\n  理论稳态序参量 r* ≈ {r_theoretical:.4f}")
-    print(f"  注：频率同步 ≠ 完全相位同步，r* < 1 是正常的！")
-    print(f"      θ* = (1/K) L†ω 各振子相位不同，但频率一致。")
+    print(f"  K_critical (边上最大相位差=1rad) = {K_critical:.4f}")
+    print(f"  K_min (使θ*跨度<2π) = {K_min_for_2pi:.4f}")
+    print(f"  选择 K = {K:.4f}")
+    print(f"  K / K_critical = {K / K_critical:.2f}")
+    theta_star_test = L_dagger_omega / K
+    span_deg = np.degrees(theta_star_test.max() - theta_star_test.min())
+    print(f"  θ* 跨度 = {span_deg:.0f}° (需 < 360°)")
+    max_phase_diff = K_critical / K
+    print(f"  边上最大相位差 = {max_phase_diff:.2f} rad ({np.degrees(max_phase_diff):.0f}°)")
     print(f"{'='*60}")
 
     # 3) 计算控制策略
