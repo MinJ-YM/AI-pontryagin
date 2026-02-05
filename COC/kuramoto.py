@@ -8,8 +8,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
+SEED = 42
 Topology = Literal["ER", "SF"]
-
 # ==========================================
 # 1. 基础工具与网络生成
 # ==========================================
@@ -43,13 +43,13 @@ def generate_network(
     if topology == "ER":
         p = k_mean / (N - 1)
         for _ in range(max_tries):
-            G = nx.erdos_renyi_graph(N, p, seed=int(rng.integers(0, 1_000_000_000)))
+            G = nx.erdos_renyi_graph(N, p, seed = int(rng.integers(0, 2**32 - 1)))
             if nx.is_connected(G): break
         else: raise RuntimeError("无法生成连通 ER 图")
     elif topology == "SF":
         m = max(1, int(round(k_mean / 2)))
         for _ in range(max_tries):
-            G = nx.barabasi_albert_graph(N, m, seed=int(rng.integers(0, 1_000_000_000)))
+            G = nx.barabasi_albert_graph(N, m, seed = int(rng.integers(0, 2**32 - 1)))
             if nx.is_connected(G): break
         else: raise RuntimeError("无法生成连通 SF 图")
     else:
@@ -59,7 +59,7 @@ def generate_network(
     
     # 生成频率并去均值
     omega = rng.uniform(-1, 1, size=N) # 均匀分布
-    omega = omega - np.mean(omega)     # 关键：确保 sum(omega) = 0
+    ## 关键：确保 sum(omega) = 0
     
     return G, adj, omega
 
@@ -78,7 +78,7 @@ def compute_critical_coupling(
     即当 K = Kc 时，网络中最紧张的那条边的相位差刚好是 1 rad。
     """
     # 1. 确保 omega 是相对值（零均值）
-    omega_centered = omega - np.mean(omega)
+    # omega_centered = omega - np.mean(omega)
     
     # 2. 构建拉普拉斯矩阵
     degree = np.sum(adj, axis=1)
@@ -87,7 +87,7 @@ def compute_critical_coupling(
     # 3. 计算 L 的伪逆乘以 omega
     # 数学性质：如果 sum(omega)=0，那么 sum(L_dagger_omega)=0
     L_dagger = np.linalg.pinv(L)
-    L_dagger_omega = L_dagger @ omega_centered
+    L_dagger_omega = L_dagger @ omega
     
     # 4. 遍历所有边，找到相位差最大值
     # theta_i - theta_j = (L†ω)_i/K - (L†ω)_j/K
@@ -108,21 +108,10 @@ def calculate_control(
     K: float,
     epsilon: float = 0.2,
 ) -> tuple[np.ndarray, np.ndarray, list[int]]:
-    """
-    计算控制策略。
-    
-    输入:
-        omega: 自然频率
-        K: 当前选定的耦合强度
-    输出:
-        theta_star: 理论同步态 (sum=0)
-        F: 控制增益向量
-        drivers: 驱动节点列表
-    """
     N = len(omega)
     
     # 1. 再次确保去均值，保证计算出的 theta_star 重心在 0
-    omega_centered = omega - np.mean(omega)
+    # omega_centered = omega - np.mean(omega)
     
     # 2. 计算 theta* = (1/K) * L† * ω
     degree = np.sum(adj, axis=1)
@@ -130,11 +119,10 @@ def calculate_control(
     L_dagger = np.linalg.pinv(L)
     
     # 这里得到的 theta_star 必然满足 sum(theta_star) ≈ 0
-    theta_star = (1.0 / K) * (L_dagger @ omega_centered)
+    # 最容易导致控制出现问题的地方：这里就要求theta之间足够小要可以线性化
+    theta_star = (1.0 / K) * (L_dagger @ omega)
     
     # 3. 识别驱动节点 + 计算增益 (Gershgorin + ε 缓冲)
-    # 论文中为补偿 θ* 近似误差，可用阈值 ε>0：将 cos 值整体保守平移 cos_eff = cos - ε
-    # 当 cos_eff < 0 时认为该边会把 Gershgorin 圆盘推向右半平面，需要用 F_i 把圆盘拉回左半平面。
     F = np.zeros(N)
     drivers = []
     
@@ -156,7 +144,7 @@ def calculate_control(
         
         if is_driver and sum_gain > 0:
             drivers.append(i)
-            F[i] = 1.2 * K * sum_gain
+            F[i] =  K * sum_gain
             
     return theta_star, F, drivers
 
@@ -173,25 +161,16 @@ def kuramoto_rhs(
     F: np.ndarray,
     theta_star: np.ndarray
 ) -> np.ndarray:
-    """
-    微分方程：
-    dθ_i/dt = ω_i + K Σ A_ij sin(θ_j - θ_i) + F_i sin(θ_i* - θ_i)
-    
-    注意控制项：直接拉向静态目标 θ_i* (其重心为0)
-    """
     # 耦合项
     # 利用 sin(j - i) = -sin(i - j)
     # delta_theta[i, j] = theta[i] - theta[j]
     delta = theta[:, None] - theta[None, :]
     coupling = np.sum(adj * np.sin(-delta), axis=1)
+    _,theta_mid= order_parameter(theta[None,:])
     
-    # 控制项 (Paper Eq. 4)
-    # 目标是让 theta_i 靠近 theta_star_i
-    # 使用 wrap 后的相位差，避免跨越 π 时控制方向反转
-    # diff_wrapped = wrap_to_pi(theta_star - theta)
-    diff_wrapped = wrap_to_pi(0 - theta)
-    # 这里的 F 已经是按 Gershgorin 推导出的“需要多大的对角线左移”，不需要再乘 100。
-    control = 2 * F * np.sin(diff_wrapped)
+    # 控制项 
+    diff_wrapped = wrap_to_pi(theta_mid - theta)
+    control = 1.5 * F * np.sin(diff_wrapped)
     
     return omega + K * coupling + control
 
@@ -211,14 +190,16 @@ def run_simulation(
     sol = solve_ivp(
         fun=lambda t, y: kuramoto_rhs(t, y, omega, K, adj, F, theta_star),
         t_span=(0, t_max),
-        y0=theta0,
+        y0=theta0, # 确保初始条件也是去均值的
         t_eval=np.linspace(0, t_max, 2000),
         method='RK45'
     )
     
     theta_t = sol.y.T # (Time, N)
-    r, psi = order_parameter(theta_t)
     
+    r, psi = order_parameter(theta_t)
+    # print(f'仿真完成: 平均相位（算数平均）={np.mean(theta_t, axis=1)}')
+    # print(f'仿真完成: 平均相位={psi}')
     return SimResult(sol.t, theta_t, r, psi)
 
 # ==========================================
@@ -229,8 +210,7 @@ def main():
     set_matplotlib_chinese()
     
     # --- 参数 ---
-    SEED = 42
-    N = 1000
+    N = 500
     k_mean = 6
     topology = "ER"
     
@@ -238,17 +218,18 @@ def main():
     
     # 1. 生成网络
     G, adj, omega = generate_network(N, topology, k_mean, rng)
-    
+    omega_centered =np.mean(omega)
+    omega = omega - omega_centered
     # 2. 确定 K 值
     # 先算临界耦合 Kc
     Kc, L_dagger_omega = compute_critical_coupling(adj, omega)
     
     # 设定 K < Kc 以使得自然状态不稳定
     # 比如取 0.6 倍 Kc，这样会有很多相位差 > 1 rad 的边
-    K = 0.3 * Kc
+    K = 0.38 * Kc
     
     # 3. 计算控制
-    theta_star, F, drivers = calculate_control(adj, omega, K, epsilon=0.5)
+    theta_star, F, drivers = calculate_control(adj, omega, K, epsilon=0.5)#理论上夹角不超过60度
     
     # 验证 theta_star 重心是否为 0
     center_mass = np.mean(theta_star)
@@ -317,7 +298,7 @@ def main():
     cmap = plt.get_cmap("rainbow")
     for i in range(N):
         color = cmap(i / N)
-        ax3.plot(res_unc.t, phases_unc[:, i], color=color, alpha=0.6, linewidth=0.8)
+        ax3.plot(res_unc.t, phases_unc[:, i], color=color, alpha=0.6, linewidth=1.0)
     
     ax3.set_title("无控制: 相对相位 (θ_i - ψ)")
     ax3.set_ylim(-np.pi, np.pi)
@@ -325,21 +306,17 @@ def main():
     ax3.set_xlabel("时间")
     ax3.grid(True, alpha=0.3)
     
-    # 子图4: 有控制的相位 (绝对相位) - 彩色轨迹
-    # 关键：这里直接画原始 theta，不减去任何东西
-    # 因为理论上 theta_star 重心为0，控制后 theta 应直接收敛到 0 附近
+    # 子图4: 有控制的相位 (相对重心) - 彩色轨迹
+    # 这里画 theta - psi，和无控制保持一致
     ax4 = fig.add_subplot(2, 2, 4)
-    phases_con = wrap_to_pi(res_con.theta)
-    
+    phases_con = wrap_to_pi(res_con.theta - res_con.psi[:, None])
+
     # 使用彩色映射绘制每条轨迹
     for i in range(N):
         color = cmap(i / N)
         ax4.plot(res_con.t, phases_con[:, i], color=color, alpha=0.6, linewidth=0.8)
-    
-    # 画出 theta_star 的范围作为参考
-    # ax4.hlines(theta_star, xmin=0, xmax=res_con.t[-1], colors='gray', alpha=0.3, lw=1.5, linestyles='--')
-    
-    ax4.set_title("有控制: 绝对相位 θ_i (应锁定在 0 附近)")
+
+    ax4.set_title("有控制: 相对相位 (θ_i - ψ)")
     ax4.set_ylim(-np.pi, np.pi)
     ax4.set_xlabel("时间")
     ax4.set_ylabel("相位 (rad)")
